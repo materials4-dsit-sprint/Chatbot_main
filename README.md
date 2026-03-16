@@ -1,3 +1,13 @@
+---
+title: Chatbot Main
+emoji: 👀
+colorFrom: yellow
+colorTo: green
+sdk: docker
+pinned: false
+license: cc-by-nc-nd-4.0
+---
+
 # 📘 Materials AI Chatbot & Phase Diagram Generator
 
 An AI-powered materials science assistant that:
