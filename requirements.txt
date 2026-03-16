@@ -1,0 +1,31 @@
+# Web framework (backend)
+fastapi
+uvicorn
+
+# Frontend (Panel app)
+panel
+bokeh
+holoviews
+hvplot
+
+# Data handling
+pandas
+numpy
+
+# LLM + LangChain stack
+langchain
+langchain-community
+langchain-text-splitters
+
+# Embeddings / vector store
+sentence-transformers
+faiss-cpu
+
+# Transformers backend
+transformers
+torch
+
+# Utilities
+requests
+python-dotenv
+pydantic

@@ -1,0 +1,156 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+/pdfs
+/data
+/logos
+# C extensions
+*.so
+*.xcworkspace
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+pip-wheel-metadata/
+
+# Virtual environments
+.env
+.env.*          # common local env files
+.venv/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Editor / IDE
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs and databases
+*.log
+*.sqlite3
+*.db
+*.db-journal
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+# optionally track notebooks - remove the above if you want them versioned
+
+# Test / coverage
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.pytest_cache/
+.cache/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*~ 
+
+# Data files and outputs (do NOT commit large datasets or generated outputs)
+data/
+datasets/
+*.csv
+*.tsv
+outputs/
+results/
+figures/
+plots/
+*.npz
+*.npy
+
+# Model weights and ML artifacts
+*.pt
+*.pth
+*.bin
+*.ckpt
+*.onnx
+model/
+models/
+weights/
+checkpoints/
+trained_models/
+
+# Vector stores & embeddings
+faiss_index/
+faiss_index.*
+vectorstore/
+vector_store/
+embeddings/
+embeddings.db
+index/
+index.faiss
+*.index
+
+# Hugging Face / cache
+.huggingface/
+cache/
+transformers_cache/
+sentence_transformers/
+# also local user caches (these are usually global but listed for safety)
+# ~/.cache/huggingface  (note: not tracked by repo, but document in README)
+
+# Large files and archives
+*.tar.gz
+*.zip
+*.rar
+*.7z
+
+# Docker
+docker-compose.override.yml
+docker-compose.*.yml
+*.envrc
+
+# Continuous integration / build artifacts
+coverage.xml
+*.cover
+dist/
+pip-wheel-metadata/
+
+# Secrets / keys / credentials
+secrets/
+*.pem
+*.key
+*.crt
+credentials/
+credentials.json
+
+# Panel / web deployment artifacts
+*.html
+*.css.map
+*.js.map
+
+# Misc
+*.pem
+*.p12
+
+# Optional: keep a small whitelist for data you actually want in repo
+# !data/README.md
+# !some_small_dataset.csv
