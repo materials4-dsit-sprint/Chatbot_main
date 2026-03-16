@@ -15,7 +15,7 @@ except Exception as e:
 
 
 # ---- HARD-CODED CACHE DIRECTORY ----
-HF_CACHE_DIR = os.path.join(os.getcwd(), "data", "hf_cache")
+HF_CACHE_DIR = os.path.join("/app/storage", "hf_cache")
 os.makedirs(HF_CACHE_DIR, exist_ok=True)
 
 

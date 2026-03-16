@@ -179,7 +179,7 @@ def fetchtemps(Mat, DF, n_steps=101):
     # print(len(CDF["Name"]))
     
     # ADding log
-    LOG_DIR = os.path.join(os.getcwd(), "data", "materials_nollm_logs",)    
+    LOG_DIR = os.path.join("/app/storage", "materials_nollm_logs",)    
     os.makedirs(LOG_DIR, exist_ok=True)
     filename = f"{Mat[0]}_(1-x)_{Mat[1]}_(x)_{Mat[2]}.csv"
     LOG_PATH = os.path.join(LOG_DIR, filename)

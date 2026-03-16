@@ -29,9 +29,9 @@ from llm_classifier import classify_rows_with_llm, OUT_DIR, _safe_filename
 
 OLLAMA_MODEL = os.environ.get("MATERIALS_OLLAMA_MODEL", "deepseek-r1:1.5b")
 
-DEFAULT_MATERIALS_CSV = os.path.join(os.getcwd(), "data", "materials", "_new_curie_neel_database_processed_cleaned.csv",)
-RAW_CSV = os.path.join(os.getcwd(), "data", "materials", "materials_cleaned_shortened_names_as_they_are_FULL.csv",)
-VS_BASE_DIR = os.path.join(os.getcwd(), "data", "csv_vectorstores",)
+DEFAULT_MATERIALS_CSV = os.path.join("/app/storage", "materials", "_new_curie_neel_database_processed_cleaned.csv",)
+RAW_CSV = os.path.join("/app/storage", "materials", "materials_cleaned_shortened_names_as_they_are_FULL.csv",)
+VS_BASE_DIR = os.path.join("/app/storage", "csv_vectorstores",)
 
 # Globals (lazy init)
 _embeddings = None

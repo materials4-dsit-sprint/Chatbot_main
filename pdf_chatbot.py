@@ -17,8 +17,8 @@ from langchain_ollama.llms import OllamaLLM
 from embeddings import get_embeddings_provider
 import core
 
-PDFS_DIR_DEFAULT = os.path.join(os.getcwd(), "data", "pdfs")
-PDFS_DIR_DEFAULT = os.path.join(os.getcwd(), "data", "pdfs")
+PDFS_DIR_DEFAULT = os.path.join("/app/storage", "pdfs")
+VS_DIR_DEFAULT = os.path.join("/app/storage", "pdf_vectorstores")
 DEFAULT_OLLAMA_MODEL = "deepseek-r1:8b"
 DEFAULT_SENT_MODEL = "all-MiniLM-L6-v2"
 

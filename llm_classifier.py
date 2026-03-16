@@ -23,7 +23,7 @@ import pandas as pd
 import time as _time
 import concurrent.futures
 
-OUT_DIR = os.path.join(os.getcwd(), "data", "materials_outputs")
+OUT_DIR = os.path.join("/app/storage", "materials_outputs")
 
 # -------------------------
 # Utilities

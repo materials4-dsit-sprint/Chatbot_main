@@ -27,8 +27,8 @@ import pandas as pd
 import json
 
 # Defaults
-PDFS_DIR_DEFAULT = os.path.join(os.getcwd(), "data", "pdfs")
-VS_DIR_DEFAULT = os.path.join(os.getcwd(), "data", "pdf_vectorstores")
+PDFS_DIR_DEFAULT = os.path.join("/app/storage", "pdfs")
+VS_DIR_DEFAULT = os.path.join("/app/storage", "pdf_vectorstores")
 DEFAULT_OLLAMA_MODEL = "deepseek-r1:8b"
 DEFAULT_SENT_MODEL = "all-MiniLM-L6-v2"
 ALLOWED_MODELS = ["deepseek-r1:8b", "deepseek-r1:7b", "deepseek-r1:1.5b"]
@@ -57,7 +57,7 @@ _LLM_CACHE: dict[str, OllamaLLM] = {}
 
 #------------------------- simple JSONL logger ------------------------------
 import uuid, datetime
-LOG_PATH = os.path.join(os.getcwd(), "data", "logs", "chat_logs.jsonl")
+LOG_PATH = os.path.join("/app/storage", "logs", "chat_logs.jsonl")
 os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
 
 def append_chat_log(entry: dict):
@@ -280,7 +280,7 @@ def init_services_from_pdfs(pdfs_dir: str, vs_dir: str, sent_model: str, ollama_
         # If no PDFs, check whether a CSV dataset exists and proceed in CSV-only mode
         csv_path_env = os.environ.get("MATERIALS_CSV", None)
         if not csv_path_env:
-            csv_path_env = os.path.join(os.getcwd(), "data", "materials", "materials.csv")
+            csv_path_env = os.path.join("/app/storage", "materials", "materials.csv")
         else:
             csv_path_env = os.path.expanduser(csv_path_env)
     
@@ -327,7 +327,7 @@ def init_services_from_pdfs(pdfs_dir: str, vs_dir: str, sent_model: str, ollama_
         if not uploaded:
             print("No PDFs were successfully uploaded.", file=sys.stderr)
             # If a CSV dataset exists, proceed in CSV-only mode; otherwise abort.
-            csv_path_env = os.environ.get("MATERIALS_CSV", os.path.join(os.getcwd(), "data", "materials", "materials.csv"))
+            csv_path_env = os.environ.get("MATERIALS_CSV", os.path.join("/app/storage", "materials", "materials.csv"))
             csv_path_env = os.path.expanduser(csv_path_env)
             if not os.path.exists(csv_path_env):
                 print(f"No CSV found at {csv_path_env} and no PDFs uploaded. Aborting.", file=sys.stderr)
@@ -348,7 +348,7 @@ def init_services_from_pdfs(pdfs_dir: str, vs_dir: str, sent_model: str, ollama_
         csv_path_env = os.environ.get("MATERIALS_CSV", None)
         # fallback path used by phase_gen handler
         if not csv_path_env:
-            csv_path_env = os.environ.get("MATERIALS_CSV", os.path.join(os.getcwd(), "data", "materials", "materials_cleaned_shortened_names_as_they_are_FULL.csv"))
+            csv_path_env = os.environ.get("MATERIALS_CSV", os.path.join("/app/storage", "materials", "materials_cleaned_shortened_names_as_they_are_FULL.csv"))
             csv_path_env = os.path.expanduser(csv_path_env)
 
         if os.path.exists(csv_path_env):
@@ -397,7 +397,7 @@ def init_services_from_pdfs(pdfs_dir: str, vs_dir: str, sent_model: str, ollama_
 
     if not _DBS:
         # Allow CSV-only operation if a CSV dataset exists (it may be indexed below).
-        csv_path_env = os.environ.get("MATERIALS_CSV", os.path.join(os.getcwd(), "data", "materials", "materials.csv"))
+        csv_path_env = os.environ.get("MATERIALS_CSV", os.path.join("/app/storage", "materials", "materials.csv"))
         csv_path_env = os.path.expanduser(csv_path_env)
         if os.path.exists(csv_path_env):
             print(f"No PDF vectorstores, but CSV found at {csv_path_env}. Continuing in CSV-only mode.", file=sys.stderr)
@@ -448,7 +448,7 @@ async def phase_gen(
     if not (A and B and C):
         raise HTTPException(status_code=400, detail="A, B and C query parameters are required")
 
-    csv_path = os.path.join(os.getcwd(), "data", "materials", "materials.csv")
+    csv_path = os.path.join("/app/storage", "materials", "materials.csv")
     if not os.path.exists(csv_path):
         raise HTTPException(status_code=500, detail=f"csv not found at {csv_path}")
 
