@@ -20,15 +20,16 @@ import numpy as np
 import pandas as pd
 import re
 from embeddings import get_embeddings_provider
-from langchain_ollama.llms import OllamaLLM
+# from langchain_ollama.llms import OllamaLLM
+from transformers import pipeline
 from fastapi import APIRouter
 from typing import List, Dict, Any, Optional
 router = APIRouter()
 
 from llm_classifier import classify_rows_with_llm, OUT_DIR, _safe_filename
 
-OLLAMA_MODEL = os.environ.get("MATERIALS_OLLAMA_MODEL", "deepseek-r1:1.5b")
-
+# OLLAMA_MODEL = os.environ.get("MATERIALS_OLLAMA_MODEL", "deepseek-r1:1.5b")
+HF_MODEL = os.environ.get("MATERIALS_HF_MODEL", "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B")
 DEFAULT_MATERIALS_CSV = os.path.join("/app/storage", "materials", "_new_curie_neel_database_processed_cleaned.csv",)
 RAW_CSV = os.path.join("/app/storage", "materials", "materials_cleaned_shortened_names_as_they_are_FULL.csv",)
 VS_BASE_DIR = os.path.join("/app/storage", "csv_vectorstores",)
@@ -225,8 +226,11 @@ def init_services(csv_path: Optional[str] = None):
     print("[materials] Initializing embeddings provider...")
     _embeddings = get_embeddings_provider()
 
-    print("[materials] Initializing Ollama LLM (temperature=0)...")
-    _llm = OllamaLLM(model=OLLAMA_MODEL, temperature=0)
+    # print("[materials] Initializing Ollama LLM (temperature=0)...")
+    # _llm = OllamaLLM(model=OLLAMA_MODEL, temperature=0)
+    
+    print("[materials] Initializing HuggingFace LLM...")
+    _llm = pipeline("text-generation", model=HF_MODEL, device_map="auto")
 
     vs_dir = os.path.join(VS_BASE_DIR, _safe_filename(os.path.basename(csv_path or RAW_CSV)))
     try:

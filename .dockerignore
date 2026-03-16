@@ -1,0 +1,15 @@
+.git
+.gitignore
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+.env
+.env.*
+.DS_Store
+storage/
+data/
+logos/
+node_modules/
+.ipynb_checkpoints/

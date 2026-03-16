@@ -21,7 +21,8 @@ from starlette.concurrency import run_in_threadpool
 from pdf_chatbot import build_prompt, invoke_llm_and_get_text
 from embeddings import get_embeddings_provider
 import core
-from langchain_ollama.llms import OllamaLLM
+# from langchain_ollama.llms import OllamaLLM
+from transformers import pipeline
 import numpy as np
 import pandas as pd
 import json
@@ -29,7 +30,8 @@ import json
 # Defaults
 PDFS_DIR_DEFAULT = os.path.join("/app/storage", "pdfs")
 VS_DIR_DEFAULT = os.path.join("/app/storage", "pdf_vectorstores")
-DEFAULT_OLLAMA_MODEL = "deepseek-r1:8b"
+# DEFAULT_OLLAMA_MODEL = "deepseek-r1:8b"
+DEFAULT_HF_MODEL = "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
 DEFAULT_SENT_MODEL = "all-MiniLM-L6-v2"
 ALLOWED_MODELS = ["deepseek-r1:8b", "deepseek-r1:7b", "deepseek-r1:1.5b"]
 
@@ -53,7 +55,8 @@ API_KEY = os.environ.get("API_KEY")
 _DBS: list = []   # loaded vectorstores (one per saved VS)
 _llm = None
 # --- LLM cache for model switching ---
-_LLM_CACHE: dict[str, OllamaLLM] = {}
+# _LLM_CACHE: dict[str, OllamaLLM] = {}  # this was required for ollama
+_LLM_CACHE: dict[str, object] = {}
 
 #------------------------- simple JSONL logger ------------------------------
 import uuid, datetime
@@ -112,13 +115,15 @@ async def generate(req: GenReq, authorization: str | None = Header(None)):
         prompt = build_prompt(req.question, docs)
     
         # --- Select LLM model (cached) ---
-        selected_model = req.model or DEFAULT_OLLAMA_MODEL
-    
+        # selected_model = req.model or DEFAULT_OLLAMA_MODEL
+        selected_model = req.model or DEFAULT_HF_MODEL
+        
         # Validate against allowlist if present
         try:
             allowed = ALLOWED_MODELS  # expects ALLOWED_MODELS defined near defaults
         except NameError:
-            allowed = [DEFAULT_OLLAMA_MODEL]
+            # allowed = [DEFAULT_OLLAMA_MODEL]
+            allowed = [DEFAULT_HF_MODEL]
     
         if selected_model not in allowed:
             raise HTTPException(status_code=400, detail="Invalid model selection")
@@ -126,7 +131,8 @@ async def generate(req: GenReq, authorization: str | None = Header(None)):
         # Get from cache or create and cache
         if selected_model not in _LLM_CACHE:
             print(f"Initializing new LLM instance: {selected_model}", file=sys.stderr)
-            _LLM_CACHE[selected_model] = OllamaLLM(model=selected_model)
+            # _LLM_CACHE[selected_model] = OllamaLLM(model=selected_model)
+            _LLM_CACHE[selected_model] = pipeline("text-generation", model=selected_model, device_map="auto")
     
         llm_instance = _LLM_CACHE[selected_model]
     
@@ -264,7 +270,8 @@ def combined_retrieve(dbs, query: str, k_total: int):
 
 # ----------------- initialization -----------------
 
-def init_services_from_pdfs(pdfs_dir: str, vs_dir: str, sent_model: str, ollama_model: str, reindex: bool):
+# def init_services_from_pdfs(pdfs_dir: str, vs_dir: str, sent_model: str, ollama_model: str, reindex: bool):
+def init_services_from_pdfs(pdfs_dir: str, vs_dir: str, sent_model: str, hf_model: str, reindex: bool):
     """
     Initialize embeddings, load/create vectorstores (one per saved VS or per PDF),
     and initialize the Ollama LLM. Populates global _DBS and _llm.
@@ -304,7 +311,8 @@ def init_services_from_pdfs(pdfs_dir: str, vs_dir: str, sent_model: str, ollama_
 
     # Ollama
     try:
-        _llm = OllamaLLM(model=ollama_model)
+        # _llm = OllamaLLM(model=ollama_model)
+        _llm = pipeline("text-generation", model=ollama_model, device_map="auto")
     except Exception as e:
         print("Failed to initialize Ollama LLM:", e, file=sys.stderr)
         print("Make sure Ollama is running and the model exists.", file=sys.stderr)
@@ -420,7 +428,8 @@ def startup_event():
     pdfs_dir = os.environ.get("PDFS_DIR", PDFS_DIR_DEFAULT)
     vs_dir = os.environ.get("VS_DIR", VS_DIR_DEFAULT)
     sent_model = os.environ.get("SENT_MODEL", DEFAULT_SENT_MODEL)
-    ollama_model = os.environ.get("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
+    # ollama_model = os.environ.get("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
+    hf_model = os.environ.get("HF_MODEL", DEFAULT_HF_MODEL)
     reindex = os.environ.get("REINDEX", "false").lower() == "true"
 
     print("Starting initialization inside FastAPI startup handler...", file=sys.stderr)
@@ -492,7 +501,8 @@ def parse_args():
     p = argparse.ArgumentParser(description="PDF Chat model server (folder-driven)")
     p.add_argument("--pdfs-dir", default=PDFS_DIR_DEFAULT, help="Directory containing PDFs (default ./pdfs)")
     p.add_argument("--vs-dir", default=VS_DIR_DEFAULT, help="Vectorstore directory")
-    p.add_argument("--ollama-model", default=DEFAULT_OLLAMA_MODEL)
+    # p.add_argument("--ollama-model", default=DEFAULT_OLLAMA_MODEL)
+    p.add_argument("--hf-model", default=DEFAULT_HF_MODEL)
     p.add_argument("--sent-model", default=DEFAULT_SENT_MODEL)
     p.add_argument("--reindex", action="store_true")
     p.add_argument("--host", default="127.0.0.1")
@@ -501,6 +511,7 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-    init_services_from_pdfs(args.pdfs_dir, args.vs_dir, args.sent_model, args.ollama_model, args.reindex)
+    # init_services_from_pdfs(args.pdfs_dir, args.vs_dir, args.sent_model, args.ollama_model, args.reindex)
+    init_services_from_pdfs(args.pdfs_dir, args.vs_dir, args.sent_model, args.hf_model, args.reindex)
     print("Initialization complete. Starting server on http://%s:%d" % (args.host, args.port))
     uvicorn.run("pdf_chatbot_server:app", host=args.host, port=args.port, log_level="info")

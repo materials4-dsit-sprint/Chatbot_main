@@ -1,31 +1,19 @@
-# Web framework (backend)
 fastapi
 uvicorn
-
-# Frontend (Panel app)
 panel
 bokeh
-holoviews
-hvplot
-
-# Data handling
-pandas
 numpy
-
-# LLM + LangChain stack
+pandas
+scikit-learn
+faiss-cpu
+sentence-transformers
 langchain
 langchain-community
-langchain-text-splitters
-
-# Embeddings / vector store
-sentence-transformers
-faiss-cpu
-
-# Transformers backend
-transformers
-torch
-
-# Utilities
+pypdf
+python-multipart
+huggingface_hub
 requests
-python-dotenv
-pydantic
+tqdm
+transformers
+accelerate
+bitsandbytes

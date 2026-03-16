@@ -12,14 +12,16 @@ import sys
 import os
 import argparse
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_ollama.llms import OllamaLLM
+# from langchain_ollama.llms import OllamaLLM
+from transformers import pipeline
 
 from embeddings import get_embeddings_provider
 import core
 
 PDFS_DIR_DEFAULT = os.path.join("/app/storage", "pdfs")
 VS_DIR_DEFAULT = os.path.join("/app/storage", "pdf_vectorstores")
-DEFAULT_OLLAMA_MODEL = "deepseek-r1:8b"
+# DEFAULT_OLLAMA_MODEL = "deepseek-r1:8b"
+DEFAULT_HF_MODEL = "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
 DEFAULT_SENT_MODEL = "all-MiniLM-L6-v2"
 
 """You are an assistant that answers questions using the retrieved context.
@@ -98,7 +100,8 @@ def parse_args():
     p.add_argument("pdf", help="Path to PDF")
     p.add_argument("--pdfs-dir", default=PDFS_DIR_DEFAULT)
     p.add_argument("--vs-dir", default=VS_DIR_DEFAULT)
-    p.add_argument("--ollama-model", default=DEFAULT_OLLAMA_MODEL)
+    # p.add_argument("--ollama-model", default=DEFAULT_OLLAMA_MODEL)
+    p.add_argument("--hf-model", default=DEFAULT_HF_MODEL)
     p.add_argument("--sent-model", default=DEFAULT_SENT_MODEL)
     p.add_argument("--reindex", action="store_true")
     p.add_argument("-k", type=int, default=30, help="Number of retrieved chunks")
@@ -194,10 +197,12 @@ def main():
 
     # ---- Initialize Ollama LLM (generation only) ----
     try:
-        llm = OllamaLLM(model=args.ollama_model)
+        # llm = OllamaLLM(model=args.ollama_model)
+        llm = pipeline("text-generation", model=args.hf_model, device_map="auto")
     except Exception as e:
-        print("Failed to initialize Ollama LLM:")
-        print("Ensure Ollama is running and the model exists (check `ollama list`).")
+        # print("Failed to initialize Ollama LLM:")
+        # print("Ensure Ollama is running and the model exists (check `ollama list`).")
+        print("Failed to initialize HF LLM:")
         print(e)
         sys.exit(1)
 
