@@ -537,7 +537,7 @@ tabs = pn.Tabs(("Chat", chat_panel), ("Phase diagram (LLM)", phase_panel), ("Pha
 
 template = pn.template.FastListTemplate(
     title="Materials 4.0 ChatBot",
-    logo="./logos/hri_cam.png" if os.path.exists("./logos/hri_cam.png") else None,
+    logo="/app/storage/logos/hri_cam.png" if os.path.exists("/app/storage/logos/hri_cam.png") else None,
     header_color="black",
     main=[],
     accent="#00BDB6",
