@@ -19,3 +19,6 @@ matplotlib
 safetensors>=0.4.3
 transformers>=4.40
 sentence-transformers>=2.7
+holoviews
+param
+pyviz-comms
