@@ -30,3 +30,4 @@ python -m panel serve frontend_app.py \
   --port 7860 \
   --allow-websocket-origin="*" \
   --allow-websocket-origin="localhost:7860"
+  --session-token-expiration 3600
