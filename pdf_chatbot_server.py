@@ -33,8 +33,11 @@ VS_DIR_DEFAULT = os.path.join("/app/storage", "pdf_vectorstores")
 # DEFAULT_OLLAMA_MODEL = "deepseek-r1:8b"
 DEFAULT_HF_MODEL = "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
 DEFAULT_SENT_MODEL = "all-MiniLM-L6-v2"
-ALLOWED_MODELS = ["deepseek-r1:8b", "deepseek-r1:7b", "deepseek-r1:1.5b"]
-
+ALLOWED_MODELS = [
+    "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
+    "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
+    "deepseek-ai/DeepSeek-R1-Distill-Llama-8B",
+]
 app = FastAPI()
 
 # import the router
