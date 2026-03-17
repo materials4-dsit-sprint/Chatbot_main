@@ -6,7 +6,6 @@ numpy
 pandas
 scikit-learn
 faiss-cpu
-sentence-transformers
 langchain
 langchain-community
 pypdf
@@ -14,7 +13,9 @@ python-multipart
 huggingface_hub
 requests
 tqdm
-transformers
 accelerate
 bitsandbytes
 matplotlib
+safetensors>=0.4.3
+transformers>=4.40
+sentence-transformers>=2.7
