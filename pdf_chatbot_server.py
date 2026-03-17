@@ -312,7 +312,7 @@ def init_services_from_pdfs(pdfs_dir: str, vs_dir: str, sent_model: str, hf_mode
     # Ollama
     try:
         # _llm = OllamaLLM(model=ollama_model)
-        _llm = pipeline("text-generation", model=ollama_model, device_map="auto")
+        _llm = pipeline("text-generation", model=hf_model, device_map="auto")
     except Exception as e:
         print("Failed to initialize Ollama LLM:", e, file=sys.stderr)
         print("Make sure Ollama is running and the model exists.", file=sys.stderr)
