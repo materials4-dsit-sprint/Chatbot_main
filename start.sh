@@ -11,7 +11,9 @@ echo "Downloading dataset storage..."
 # Clone dataset repo if storage is empty
 if [ ! "$(ls -A /app/storage)" ]; then
     git clone https://hf:$HF_TOKEN@huggingface.co/datasets/DSIT-TESTS/materials_dataset /tmp/dataset
-    cp -r /tmp/dataset/* /app/storage/ || true
+    cd /tmp/dataset
+    git lfs pull
+    cp -r . /app/storage/ || true
 fi
 
 echo "Starting backend (FastAPI)..."
