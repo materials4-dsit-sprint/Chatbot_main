@@ -14,6 +14,7 @@ if [ ! "$(ls -A /app/storage)" ]; then
     cd /tmp/dataset
     git lfs pull
     cp -r . /app/storage/ || true
+    cd /app
 fi
 
 echo "Starting backend (FastAPI)..."
