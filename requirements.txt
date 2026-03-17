@@ -22,3 +22,4 @@ sentence-transformers>=2.7
 holoviews
 param
 pyviz-comms
+hvplot
