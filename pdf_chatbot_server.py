@@ -433,7 +433,8 @@ def startup_event():
     reindex = os.environ.get("REINDEX", "false").lower() == "true"
 
     print("Starting initialization inside FastAPI startup handler...", file=sys.stderr)
-    init_services_from_pdfs(pdfs_dir, vs_dir, sent_model, ollama_model, reindex)
+    # init_services_from_pdfs(pdfs_dir, vs_dir, sent_model, ollama_model, reindex)
+    init_services_from_pdfs(pdfs_dir, vs_dir, sent_model, hf_model, reindex)
     print("Initialization complete (startup handler).", file=sys.stderr)
 
 
