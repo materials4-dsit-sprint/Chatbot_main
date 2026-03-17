@@ -115,7 +115,7 @@ def invoke_llm_and_get_text(llm, prompt_text):
     # 1) If llm is callable (has __call__), try it and handle different return shapes
     try:
         if callable(llm):
-            res = llm(prompt_text)
+            res = llm(prompt_text, max_new_tokens = 768)
             # Handle HuggingFace pipeline output
             if isinstance(res, list) and len(res) > 0 and "generated_text" in res[0]:
                 text = res[0]["generated_text"]
