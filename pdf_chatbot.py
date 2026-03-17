@@ -116,6 +116,11 @@ def invoke_llm_and_get_text(llm, prompt_text):
     try:
         if callable(llm):
             res = llm(prompt_text)
+            # Handle HuggingFace pipeline output
+            if isinstance(res, list) and len(res) > 0 and "generated_text" in res[0]:
+                text = res[0]["generated_text"]
+                return text[len(prompt_text):].strip()
+                
             # If a raw string was returned
             if isinstance(res, str):
                 return res
