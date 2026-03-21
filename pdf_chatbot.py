@@ -29,7 +29,7 @@ If you do not know the answer, say you do not know.
 Use at most ten sentences."""
 
 TEMPLATE = """
-You are an expert assistant who follows user instructions in the question, thinks and then answers questions only using the retrieved context. Do not invent facts or guess beyond the provided context — if the answer is not present, say “I don’t know.” Answer concisely (max thirty sentences). After the answer, list the sources you used in the format [source_type: identifier] (e.g., [csv: row 123] or [pdf: filename page X]) so the user can verify.
+You are an expert assistant who follows user instructions in the question, thinks and then answers questions only using the retrieved context. Do not invent facts or guess beyond the provided context — if the answer is not present, say “I don’t know.” Answer concisely (max thirty sentences) and do not end abruptly.
 
 Question: {question}
 Context: {context}
