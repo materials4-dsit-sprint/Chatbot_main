@@ -14,6 +14,7 @@ import glob
 import os
 import sys
 from math import ceil
+from typing import Literal
 from fastapi import FastAPI, HTTPException, Header, Response
 from pydantic import BaseModel
 import uvicorn
@@ -49,13 +50,16 @@ class GenReq(BaseModel):
     question: str
     k: int | None = 30
     log: bool | None = True
-    model: str | None = None 
+    model: str | None = None
+    context_source: Literal["pdfs", "csvs"] = "pdfs"
 
 #get API_KEY
 API_KEY = os.environ.get("API_KEY")
 
 # Globals
 _DBS: list = []   # loaded vectorstores (one per saved VS)
+_PDF_DBS: list = []
+_CSV_DBS: list = []
 _llm = None
 # --- LLM cache for model switching ---
 # _LLM_CACHE: dict[str, OllamaLLM] = {}  # this was required for ollama
@@ -89,7 +93,12 @@ async def generate(req: GenReq, authorization: str | None = Header(None)):
 
     def work():
         k_used = req.k or 30
-        docs = combined_retrieve(_DBS, req.question, k_used)
+        selected_dbs = get_dbs_for_context_source(req.context_source)
+        if not selected_dbs:
+            source_label = "PDF" if req.context_source == "pdfs" else "CSV"
+            return {"text": f"No indexed {source_label} sources are available."}
+
+        docs = combined_retrieve(selected_dbs, req.question, k_used)
         if not docs:
             return {"text": "No relevant documents found."}
     
@@ -110,6 +119,7 @@ async def generate(req: GenReq, authorization: str | None = Header(None)):
                 "event": "retrieval",
                 "request_id": rid,
                 "question": req.question,
+                "context_source": req.context_source,
                 "k_requested": k_used,
                 "retrieved_count": len(retrieved_summary),
                 "retrieved": retrieved_summary
@@ -148,6 +158,7 @@ async def generate(req: GenReq, authorization: str | None = Header(None)):
                 "event": "answer",
                 "request_id": rid,
                 "question": req.question,
+                "context_source": req.context_source,
                 "k_used": k_used,
                 "llm_answer": text,
                 "context_length_chars": len(prompt),
@@ -182,6 +193,7 @@ def load_vectorstores_from_dir(vs_dir: str, embeddings):
         try:
             if hasattr(core, "load_vector_store"):
                 db = core.load_vector_store(cand, embeddings)
+                setattr(db, "_source_path", cand)
                 print(f"Loaded vectorstore via core.load_vector_store: {cand}", file=sys.stderr)
                 loaded.append(db)
                 continue
@@ -191,6 +203,7 @@ def load_vectorstores_from_dir(vs_dir: str, embeddings):
         # Try core.create_or_load_vector_store as a fallback
         try:
             db, store_dir = core.create_or_load_vector_store(cand, vs_dir, embeddings, reindex=False)
+            setattr(db, "_source_path", cand)
             print(f"Loaded vectorstore via core.create_or_load_vector_store fallback: {cand}", file=sys.stderr)
             loaded.append(db)
             continue
@@ -203,7 +216,10 @@ def load_vectorstores_from_dir(vs_dir: str, embeddings):
             # heuristics: FAISS saved folder or .index file
             if os.path.isdir(cand) or cand.endswith(".index"):
                 try:
-                    db = FAISS.load_local(cand, embeddings)
+                    from langchain_community.vectorstores import FAISS as _FAISS
+
+                    db = _FAISS.load_local(cand, embeddings, allow_dangerous_deserialization=True)
+                    setattr(db, "_source_path", cand)
                     print(f"Loaded FAISS from {cand}", file=sys.stderr)
                     loaded.append(db)
                     continue
@@ -215,6 +231,31 @@ def load_vectorstores_from_dir(vs_dir: str, embeddings):
         print(f"Skipping candidate (not a supported vectorstore): {cand}", file=sys.stderr)
 
     return loaded
+
+def infer_db_source_type(db, candidate_path: str) -> str:
+    """
+    Best-effort DB classification so we can keep PDF and CSV retrieval separate.
+    """
+    base = os.path.basename(candidate_path).lower()
+    if "csv" in base:
+        return "csv"
+
+    try:
+        if hasattr(db, "docstore") and hasattr(db.docstore, "_dict"):
+            docs = list(db.docstore._dict.values())
+            if docs:
+                metadata = getattr(docs[0], "metadata", {}) or {}
+                if metadata.get("source_type") == "csv":
+                    return "csv"
+    except Exception:
+        pass
+
+    return "pdf"
+
+def get_dbs_for_context_source(context_source: str):
+    if context_source == "csvs":
+        return _CSV_DBS
+    return _PDF_DBS
 
 def combined_retrieve(dbs, query: str, k_total: int):
     """
@@ -279,7 +320,7 @@ def init_services_from_pdfs(pdfs_dir: str, vs_dir: str, sent_model: str, hf_mode
     Initialize embeddings, load/create vectorstores (one per saved VS or per PDF),
     and initialize the Ollama LLM. Populates global _DBS and _llm.
     """
-    global _DBS, _llm
+    global _DBS, _PDF_DBS, _CSV_DBS, _llm
 
     # find PDFs in pdfs_dir
     pdfs_dir = os.path.abspath(os.path.expanduser(pdfs_dir))
@@ -323,6 +364,14 @@ def init_services_from_pdfs(pdfs_dir: str, vs_dir: str, sent_model: str, hf_mode
 
     # Try loading existing vectorstores from vs_dir
     _DBS = load_vectorstores_from_dir(vs_dir, embeddings)
+    _PDF_DBS = []
+    _CSV_DBS = []
+    for db in _DBS:
+        source_type = infer_db_source_type(db, getattr(db, "_source_path", ""))
+        if source_type == "csv":
+            _CSV_DBS.append(db)
+        else:
+            _PDF_DBS.append(db)
     if _DBS:
         print(f"Loaded {len(_DBS)} vectorstore(s) from {vs_dir}", file=sys.stderr)
     else:
@@ -350,6 +399,7 @@ def init_services_from_pdfs(pdfs_dir: str, vs_dir: str, sent_model: str, hf_mode
             try:
                 db, store_dir = core.create_or_load_vector_store(up, vs_dir, embeddings, reindex=reindex)
                 _DBS.append(db)
+                _PDF_DBS.append(db)
                 print(f"Created/loaded vectorstore for {up} -> {store_dir}", file=sys.stderr)
             except Exception as e:
                 print(f"Failed to create vectorstore for {up}: {e}", file=sys.stderr)
@@ -363,6 +413,13 @@ def init_services_from_pdfs(pdfs_dir: str, vs_dir: str, sent_model: str, hf_mode
             csv_path_env = os.path.expanduser(csv_path_env)
 
         if os.path.exists(csv_path_env):
+            if _CSV_DBS:
+                print("CSV vectorstore already loaded from disk; skipping CSV re-indexing.", file=sys.stderr)
+                print(
+                    f"Initialization finished: {len(_PDF_DBS)} PDF vectorstore(s), {len(_CSV_DBS)} CSV vectorstore(s).",
+                    file=sys.stderr,
+                )
+                return
             print(f"Indexing CSV dataset for RAG: {csv_path_env}", file=sys.stderr)
             # read CSV, create compact text per row
             df_csv = pd.read_csv(csv_path_env)
@@ -398,6 +455,7 @@ def init_services_from_pdfs(pdfs_dir: str, vs_dir: str, sent_model: str, hf_mode
                             print(f"Warning: could not persist CSV vectorstore: {e}", file=sys.stderr)
                         # append to global DB list so combined_retrieve will search it
                         _DBS.append(csv_db)
+                        _CSV_DBS.append(csv_db)
                         print("CSV vectorstore added to _DBS.", file=sys.stderr)
                     except Exception as e:
                         print(f"CSV FAISS creation error (continuing): {e}", file=sys.stderr)
@@ -417,7 +475,10 @@ def init_services_from_pdfs(pdfs_dir: str, vs_dir: str, sent_model: str, hf_mode
             sys.exit(1)
 
     # done
-    print("Initialization finished: vectorstores and LLM ready.", file=sys.stderr)
+    print(
+        f"Initialization finished: {len(_PDF_DBS)} PDF vectorstore(s), {len(_CSV_DBS)} CSV vectorstore(s).",
+        file=sys.stderr,
+    )
 
 @app.on_event("startup")
 def startup_event():

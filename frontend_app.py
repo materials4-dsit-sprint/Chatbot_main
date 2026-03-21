@@ -82,7 +82,8 @@ def chat_callback(message, user, chat):
         "question": message,
         "k": int(k_slider.value),
         "log": bool(log_toggle.value),
-        "model": llm_menu.value
+        "model": llm_menu.value,
+        "context_source": context_source_selector.value,
     }
     headers = {
         "Authorization": f"Bearer {API_KEY}",
@@ -156,6 +157,15 @@ llm_menu = pn.widgets.Select(
     width=160
 )
 
+context_source_selector = pn.widgets.RadioButtonGroup(
+    name="Search in",
+    options={"PDFs": "pdfs", "CSVs": "csvs"},
+    value="pdfs",
+    button_type="default",
+    button_style="outline",
+    width=180,
+)
+
 chat = pn.chat.ChatInterface(
     callback=chat_callback,
     user="Cam26",
@@ -170,6 +180,7 @@ chat.send(
 )
 
 chat_panel = pn.Column(pn.Spacer(height=10),
+                       pn.Row(context_source_selector),
                        pn.Row(log_toggle, 
                               pn.Spacer(width=20), llm_menu, 
                               pn.Spacer(width=20), k_slider, 
