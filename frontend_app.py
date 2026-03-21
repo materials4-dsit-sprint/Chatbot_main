@@ -180,8 +180,8 @@ chat.send(
 )
 
 chat_panel = pn.Column(pn.Spacer(height=10),
-                       pn.Row(context_source_selector),
-                       pn.Row(log_toggle, 
+                       pn.Row(context_source_selector,
+                              pn.Spacer(width=20), log_toggle, 
                               pn.Spacer(width=20), llm_menu, 
                               pn.Spacer(width=20), k_slider, 
                               pn.Spacer(width=20), timeout_slider), 
