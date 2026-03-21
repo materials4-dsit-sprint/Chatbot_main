@@ -10,10 +10,9 @@ echo "Downloading dataset storage..."
 
 # Clone dataset repo if storage is empty
 if [ ! "$(ls -A /app/storage)" ]; then
-    git clone https://hf:$HF_TOKEN@huggingface.co/datasets/DSIT-TESTS/materials_dataset /tmp/dataset
-    cd /tmp/dataset
+    git clone https://hf:$HF_TOKEN@huggingface.co/datasets/DSIT-TESTS/materials_dataset /app/storage
+    cd /app/storage
     git lfs pull
-    cp -r . /app/storage/ || true
     cd /app
 fi
 
