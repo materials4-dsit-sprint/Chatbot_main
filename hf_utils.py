@@ -37,7 +37,7 @@ def build_text_generation_pipeline(model_name: str, **pipeline_kwargs: Any):
         device_map="auto",
         model_kwargs={
             "quantization_config": quantization_config,
-            "torch_dtype": torch.float16,
+            "dtype": torch.float16,
             "low_cpu_mem_usage": True,
         },
         **pipeline_kwargs,
