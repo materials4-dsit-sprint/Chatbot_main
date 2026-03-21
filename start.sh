@@ -3,6 +3,8 @@ set -e
 
 DATASET_REPO_URL="https://hf:$HF_TOKEN@huggingface.co/datasets/DSIT-TESTS/materials_dataset"
 
+export OMP_NUM_THREADS=1
+
 sync_storage_updates() {
     local sync_paths=()
 
