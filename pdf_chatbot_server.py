@@ -23,10 +23,10 @@ from pdf_chatbot import build_prompt, invoke_llm_and_get_text
 from embeddings import get_embeddings_provider
 import core
 # from langchain_ollama.llms import OllamaLLM
-from transformers import pipeline
 import numpy as np
 import pandas as pd
 import json
+from hf_utils import build_text_generation_pipeline
 
 # Defaults
 PDFS_DIR_DEFAULT = os.path.join("/app/storage", "pdfs")
@@ -147,7 +147,7 @@ async def generate(req: GenReq, authorization: str | None = Header(None)):
         if selected_model not in _LLM_CACHE:
             print(f"Initializing new LLM instance: {selected_model}", file=sys.stderr)
             # _LLM_CACHE[selected_model] = OllamaLLM(model=selected_model)
-            _LLM_CACHE[selected_model] = pipeline("text-generation", model=selected_model, device_map="auto")
+            _LLM_CACHE[selected_model] = build_text_generation_pipeline(selected_model)
     
         llm_instance = _LLM_CACHE[selected_model]
     
@@ -358,8 +358,7 @@ def init_services_from_pdfs(pdfs_dir: str, vs_dir: str, sent_model: str, hf_mode
     # Ollama
     try:
         # _llm = OllamaLLM(model=ollama_model)
-        _llm = pipeline("text-generation", model=hf_model, device_map="auto",
-                        max_new_tokens=1024)
+        _llm = build_text_generation_pipeline(hf_model, max_new_tokens=1024)
     except Exception as e:
         print("Failed to initialize Ollama LLM:", e, file=sys.stderr)
         print("Make sure Ollama is running and the model exists.", file=sys.stderr)

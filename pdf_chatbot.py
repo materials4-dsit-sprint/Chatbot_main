@@ -13,9 +13,9 @@ import os
 import argparse
 from langchain_core.prompts import ChatPromptTemplate
 # from langchain_ollama.llms import OllamaLLM
-from transformers import pipeline
 
 from embeddings import get_embeddings_provider
+from hf_utils import build_text_generation_pipeline
 import core
 
 PDFS_DIR_DEFAULT = os.path.join("/app/storage", "pdfs")
@@ -203,7 +203,7 @@ def main():
     # ---- Initialize Ollama LLM (generation only) ----
     try:
         # llm = OllamaLLM(model=args.ollama_model)
-        llm = pipeline("text-generation", model=args.hf_model, device_map="auto")
+        llm = build_text_generation_pipeline(args.hf_model)
     except Exception as e:
         # print("Failed to initialize Ollama LLM:")
         # print("Ensure Ollama is running and the model exists (check `ollama list`).")

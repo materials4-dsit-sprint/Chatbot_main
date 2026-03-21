@@ -21,9 +21,9 @@ import pandas as pd
 import re
 from embeddings import get_embeddings_provider
 # from langchain_ollama.llms import OllamaLLM
-from transformers import pipeline
 from fastapi import APIRouter
 from typing import List, Dict, Any, Optional
+from hf_utils import build_text_generation_pipeline
 router = APIRouter()
 
 from llm_classifier import classify_rows_with_llm, OUT_DIR, _safe_filename
@@ -230,7 +230,7 @@ def init_services(csv_path: Optional[str] = None):
     # _llm = OllamaLLM(model=OLLAMA_MODEL, temperature=0)
     
     print("[materials] Initializing HuggingFace LLM...")
-    _llm = pipeline("text-generation", model=HF_MODEL, device_map="auto")
+    _llm = build_text_generation_pipeline(HF_MODEL)
 
     vs_dir = os.path.join(VS_BASE_DIR, _safe_filename(os.path.basename(csv_path or RAW_CSV)))
     try:
