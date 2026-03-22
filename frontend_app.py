@@ -270,6 +270,7 @@ right_panel = pn.Column(
     csv_upload_status,
     width=280,
     sizing_mode="fixed",
+    align="center",
 )
 
 chat_panel = pn.Row(
