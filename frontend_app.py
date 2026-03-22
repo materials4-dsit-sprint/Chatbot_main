@@ -250,6 +250,8 @@ chat = pn.chat.ChatInterface(
     callback=chat_callback,
     user="Cam26",
     sizing_mode="stretch_both",
+    min_width=400,
+    width_policy="max",
 )
 
 chat.send(
@@ -262,8 +264,8 @@ chat.send(
 left_panel = pn.Column(
     chat,
     sizing_mode="stretch_both",
-    min_width=0,
-    styles={"flex": "1 1 0%", "min-width": "0"},
+    min_width=400,
+    width_policy="max",
 )
 
 right_panel = pn.Column(
@@ -282,10 +284,10 @@ right_panel = pn.Column(
 
 chat_panel = pn.Row(
     left_panel,
-    pn.layout.Divider(width=1, height_policy="max"),
     right_panel,
-    sizing_mode="stretch_width",
-    styles={"align-items": "stretch"},
+    sizing_mode="stretch_both",
+    width_policy="max",
+    styles={"align-items": "stretch", "gap": "16px"},
 )
 
 # -----------------------
