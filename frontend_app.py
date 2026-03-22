@@ -259,9 +259,16 @@ chat.send(
     respond=False,
 )
 
+left_panel = pn.Column(
+    chat,
+    sizing_mode="stretch_both",
+    min_width=0,
+)
+
 right_panel = pn.Column(
     context_source_selector,
-    log_toggle, llm_menu,
+    log_toggle,
+    llm_menu,
     k_slider,
     timeout_slider,
     pdf_dropper,
@@ -270,17 +277,13 @@ right_panel = pn.Column(
     csv_upload_status,
     width=280,
     sizing_mode="fixed",
-    align="center",
 )
 
 chat_panel = pn.Row(
-    pn.Column(
-        chat,
-        sizing_mode="stretch_both",
-    ),
-    pn.layout.Divider(width=1, height_policy="max"),  # vertical line
+    left_panel,
+    pn.layout.Divider(width=1, height_policy="max"),
     right_panel,
-    sizing_mode="stretch_both",
+    sizing_mode="stretch_width",
 )
 
 # -----------------------
