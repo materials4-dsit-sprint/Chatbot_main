@@ -262,7 +262,7 @@ chat.send(
 left_panel = pn.Column(
     chat,
     sizing_mode="stretch_both",
-    min_width=0,
+    min_width=500,
 )
 
 right_panel = pn.Column(
