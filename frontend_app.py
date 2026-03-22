@@ -263,6 +263,7 @@ left_panel = pn.Column(
     chat,
     sizing_mode="stretch_both",
     min_width=0,
+    styles={"flex": "1 1 0%", "min-width": "0"},
 )
 
 right_panel = pn.Column(
@@ -284,6 +285,7 @@ chat_panel = pn.Row(
     pn.layout.Divider(width=1, height_policy="max"),
     right_panel,
     sizing_mode="stretch_width",
+    styles={"align-items": "stretch"},
 )
 
 # -----------------------
