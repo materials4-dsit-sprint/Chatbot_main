@@ -262,7 +262,7 @@ chat.send(
 left_panel = pn.Column(
     chat,
     sizing_mode="stretch_both",
-    min_width=500,
+    min_width=0,
 )
 
 right_panel = pn.Column(
@@ -638,7 +638,10 @@ phase_panel = pn.Column(
     llm_plot_pane,
 )
 
-tabs = pn.Tabs(("Chat", chat_panel), ("Phase diagram (LLM)", phase_panel), ("Phase diagram (script)", gen_panel))
+tabs = pn.Tabs(("Chat", chat_panel),
+               ("Phase diagram (LLM)", phase_panel),
+               ("Phase diagram (script)", gen_panel), 
+               sizing_mode="stretch_both",)
 
 
 template = pn.template.FastListTemplate(
