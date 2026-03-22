@@ -259,25 +259,28 @@ chat.send(
     respond=False,
 )
 
-chat_panel = pn.Column(pn.Spacer(height=10),
-                       pn.Row(context_source_selector,
-                              pn.Spacer(width=20), log_toggle, 
-                              pn.Spacer(width=20), llm_menu, 
-                              pn.Spacer(width=20), k_slider, 
-                              pn.Spacer(width=20), timeout_slider), 
-                       pn.Row(
-                           pn.Column(pdf_dropper, pdf_upload_status, sizing_mode="stretch_width"),
-                           pn.Spacer(width=20),
-                           pn.Column(csv_dropper, csv_upload_status, sizing_mode="stretch_width"),
-                           sizing_mode="stretch_width",
-                       ),
-                       pn.layout.Divider(),
-                       chat, 
-                       sizing_mode="stretch_both")
+right_panel = pn.Column(
+    context_source_selector,
+    log_toggle, llm_menu,
+    k_slider,
+    timeout_slider,
+    pdf_dropper,
+    pdf_upload_status,
+    csv_dropper,
+    csv_upload_status,
+    width=280,
+    sizing_mode="fixed",
+)
 
-
-
-
+chat_panel = pn.Row(
+    pn.Column(
+        chat,
+        sizing_mode="stretch_both",
+    ),
+    pn.layout.Divider(width=1, height_policy="max"),  # vertical line
+    right_panel,
+    sizing_mode="stretch_both",
+)
 
 # -----------------------
 # Shared cached data (module-level)
