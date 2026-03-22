@@ -20,7 +20,7 @@ hv.extension("bokeh")
 import hvplot.pandas  # activates hvplot
 from collections import OrderedDict
 pn.config.sizing_mode = "stretch_width"
-pn.extension()
+pn.extension("filedropper")
 
 
 # --------------------
@@ -29,6 +29,7 @@ pn.extension()
 API_KEY = os.environ.get("API_KEY")          # must match backend
 
 ENDPOINT = os.environ.get("ENDPOINT", "http://localhost:9000/generate")
+UPLOAD_ENDPOINT = os.environ.get("UPLOAD_ENDPOINT", "http://localhost:9000/upload-context")
 PHASE_GEN_ENDPOINT = os.environ.get("PHASE_GEN_ENDPOINT", "http://127.0.0.1:9000/phase_gen")
 PHASE_MATERIALS_ENDPOINT = os.environ.get("PHASE_MATERIALS_ENDPOINT", "http://127.0.0.1:9000/materials_phase")
 
@@ -106,6 +107,53 @@ def chat_callback(message, user, chat):
         return f"❌ Request failed: {e}"
 
 
+def upload_context_file(file_widget, context_source: str, status_pane):
+    filename = None
+    file_value = None
+
+    if isinstance(file_widget.value, dict):
+        if file_widget.value:
+            filename, file_value = next(iter(file_widget.value.items()))
+            if isinstance(file_value, str):
+                file_value = file_value.encode("utf-8")
+    else:
+        filename = getattr(file_widget, "filename", None)
+        file_value = file_widget.value
+
+    if not file_value or not filename:
+        status_pane.object = "❌ Select a file first."
+        return
+
+    headers = {"Authorization": f"Bearer {API_KEY}"}
+    mime_type = "application/pdf" if context_source == "pdfs" else "text/csv"
+    files = {"file": (filename, file_value, mime_type)}
+    data = {"context_source": context_source}
+
+    status_pane.object = f"Uploading `{filename}` and building the vector store..."
+
+    try:
+        response = requests.post(
+            UPLOAD_ENDPOINT,
+            data=data,
+            files=files,
+            headers=headers,
+            timeout=float(timeout_slider.value),
+        )
+        if response.status_code != 200:
+            status_pane.object = f"❌ Error {response.status_code}: {response.text}"
+            return
+
+        payload = response.json()
+        source_label = "PDF" if context_source == "pdfs" else "CSV"
+        status_pane.object = (
+            f"✅ {source_label} uploaded: `{payload.get('filename')}`. "
+            f"PDF stores: {payload.get('pdf_vectorstores', 0)} | "
+            f"CSV stores: {payload.get('csv_vectorstores', 0)}"
+        )
+    except requests.exceptions.RequestException as e:
+        status_pane.object = f"❌ Upload failed: {e}"
+
+
 # log_toggle = pn.widgets.Toggle(
 #     name="LLM Logs",
 #     value=True,
@@ -168,6 +216,38 @@ context_source_selector = pn.widgets.RadioButtonGroup(
     width=180,
 )
 
+FileDropper = getattr(pn.widgets, "FileDropper", pn.widgets.FileInput)
+
+if FileDropper is pn.widgets.FileInput:
+    pdf_dropper = FileDropper(name="PDF dropper", accept=".pdf", multiple=False)
+    csv_dropper = FileDropper(name="CSV dropper", accept=".csv", multiple=False)
+else:
+    pdf_dropper = FileDropper(
+        name="PDF dropper",
+        accepted_filetypes=[".pdf"],
+        multiple=False,
+        max_file_size="100MB",
+        layout="compact",
+        sizing_mode="stretch_width",
+    )
+    csv_dropper = FileDropper(
+        name="CSV dropper",
+        accepted_filetypes=[".csv", "text/csv"],
+        multiple=False,
+        max_file_size="100MB",
+        layout="compact",
+        sizing_mode="stretch_width",
+    )
+
+pdf_upload_button = pn.widgets.Button(name="Upload PDF", button_type="primary", width=130)
+pdf_upload_status = pn.pane.Markdown("Drag and drop a PDF here to add it to the PDF vector stores.", sizing_mode="stretch_width")
+
+csv_upload_button = pn.widgets.Button(name="Upload CSV", button_type="primary", width=130)
+csv_upload_status = pn.pane.Markdown("Drag and drop a CSV here to add it to the CSV vector stores.", sizing_mode="stretch_width")
+
+pdf_upload_button.on_click(lambda event: upload_context_file(pdf_dropper, "pdfs", pdf_upload_status))
+csv_upload_button.on_click(lambda event: upload_context_file(csv_dropper, "csvs", csv_upload_status))
+
 chat = pn.chat.ChatInterface(
     callback=chat_callback,
     user="Cam26",
@@ -187,8 +267,12 @@ chat_panel = pn.Column(pn.Spacer(height=10),
                               pn.Spacer(width=20), llm_menu, 
                               pn.Spacer(width=20), k_slider, 
                               pn.Spacer(width=20), timeout_slider), 
-                       # pn.Spacer(height=10),
-                       # pn.Row(k_slider, pn.Spacer(width=20), timeout_slider),
+                       pn.Row(
+                           pn.Column("### PDF uploads", "Drop PDF files here", pdf_dropper, pdf_upload_button, pdf_upload_status, sizing_mode="stretch_width"),
+                           pn.Spacer(width=20),
+                           pn.Column("### CSV uploads", "Drop CSV files here", csv_dropper, csv_upload_button, csv_upload_status, sizing_mode="stretch_width"),
+                           sizing_mode="stretch_width",
+                       ),
                        pn.layout.Divider(),
                        chat, 
                        sizing_mode="stretch_both")

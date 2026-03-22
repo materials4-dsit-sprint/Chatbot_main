@@ -13,9 +13,10 @@ import argparse
 import glob
 import os
 import sys
+from pathlib import Path
 from math import ceil
 from typing import Literal
-from fastapi import FastAPI, HTTPException, Header, Response
+from fastapi import FastAPI, HTTPException, Header, Response, File, UploadFile
 from pydantic import BaseModel
 import uvicorn
 from starlette.concurrency import run_in_threadpool
@@ -31,6 +32,8 @@ from hf_utils import build_text_generation_pipeline
 # Defaults
 PDFS_DIR_DEFAULT = os.path.join("/app/storage", "pdfs")
 VS_DIR_DEFAULT = os.path.join("/app/storage", "pdf_vectorstores")
+MATERIALS_DIR_DEFAULT = os.path.join("/app/storage", "materials")
+CSV_VS_DIR_DEFAULT = os.path.join("/app/storage", "csv_vectorstores")
 # DEFAULT_OLLAMA_MODEL = "deepseek-r1:8b"
 DEFAULT_HF_MODEL = "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
 DEFAULT_SENT_MODEL = "all-MiniLM-L6-v2"
@@ -63,6 +66,7 @@ _DBS: list = []   # loaded vectorstores (one per saved VS)
 _PDF_DBS: list = []
 _CSV_DBS: list = []
 _llm = None
+_embeddings = None
 # --- LLM cache for model switching ---
 # _LLM_CACHE: dict[str, OllamaLLM] = {}  # this was required for ollama
 _LLM_CACHE: dict[str, object] = {}
@@ -259,6 +263,77 @@ def get_dbs_for_context_source(context_source: str):
         return _CSV_DBS
     return _PDF_DBS
 
+def _replace_registered_db(target_list: list, new_db, source_path: str):
+    source_path = os.path.abspath(source_path)
+    kept = []
+    for existing_db in target_list:
+        existing_path = os.path.abspath(getattr(existing_db, "_source_path", ""))
+        if existing_path != source_path:
+            kept.append(existing_db)
+    kept.append(new_db)
+    target_list[:] = kept
+
+def register_vectorstore(db, source_type: str, source_path: str):
+    global _DBS, _PDF_DBS, _CSV_DBS
+
+    source_path = os.path.abspath(source_path)
+    setattr(db, "_source_path", source_path)
+    normalized_source_type = "csv" if source_type == "csv" else "pdf"
+
+    _replace_registered_db(_DBS, db, source_path)
+    if normalized_source_type == "csv":
+        _replace_registered_db(_CSV_DBS, db, source_path)
+    else:
+        _replace_registered_db(_PDF_DBS, db, source_path)
+
+def _save_uploaded_file(upload: UploadFile, dest_dir: str, allowed_suffixes: set[str]) -> str:
+    filename = os.path.basename(upload.filename or "")
+    if not filename:
+        raise HTTPException(status_code=400, detail="Uploaded file must have a filename.")
+
+    suffix = Path(filename).suffix.lower()
+    if suffix not in allowed_suffixes:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {suffix or 'unknown'}")
+
+    os.makedirs(dest_dir, exist_ok=True)
+    dest_path = os.path.join(dest_dir, filename)
+    return dest_path
+
+def build_csv_vectorstore(csv_path: str, vs_root: str, embeddings, reindex: bool = False):
+    from langchain_community.vectorstores import FAISS as _FAISS
+
+    os.makedirs(vs_root, exist_ok=True)
+    base_name = os.path.basename(csv_path)
+    store_dir = os.path.join(vs_root, base_name + "_faiss")
+
+    if reindex and os.path.exists(store_dir):
+        import shutil
+        shutil.rmtree(store_dir)
+
+    if os.path.exists(store_dir):
+        db = _FAISS.load_local(store_dir, embeddings, allow_dangerous_deserialization=True)
+        return db, store_dir
+
+    df_csv = pd.read_csv(csv_path)
+    texts = []
+    metadatas = []
+    for idx, row in df_csv.iterrows():
+        txt = " | ".join([f"{col}: {row[col]}" for col in df_csv.columns])
+        texts.append(txt)
+        metadatas.append({
+            "source_type": "csv",
+            "row_id": int(idx),
+            "source": csv_path,
+            "filename": base_name,
+        })
+
+    if not texts:
+        raise RuntimeError(f"No rows found in CSV: {csv_path}")
+
+    db = _FAISS.from_texts(texts, embedding=embeddings, metadatas=metadatas)
+    db.save_local(store_dir)
+    return db, store_dir
+
 def combined_retrieve(dbs, query: str, k_total: int):
     """
     Query multiple DBs and merge results. Returns up to k_total documents.
@@ -314,6 +389,58 @@ def combined_retrieve(dbs, query: str, k_total: int):
     print(f"[retrieve] requested k_total={k_total}, collected={len(collected)}, deduped={len(deduped)}", file=sys.stderr)
     return deduped[:k_total]
 
+@app.post("/upload-context")
+async def upload_context(
+    context_source: Literal["pdfs", "csvs"],
+    file: UploadFile = File(...),
+    authorization: str | None = Header(None),
+):
+    if authorization != f"Bearer {API_KEY}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    if _llm is None or _embeddings is None:
+        raise HTTPException(status_code=503, detail="Server not initialized")
+
+    if context_source == "pdfs":
+        dest_dir = os.environ.get("PDFS_DIR", PDFS_DIR_DEFAULT)
+        allowed_suffixes = {".pdf"}
+        vs_root = os.environ.get("VS_DIR", VS_DIR_DEFAULT)
+    else:
+        dest_dir = os.environ.get("MATERIALS_DIR", MATERIALS_DIR_DEFAULT)
+        allowed_suffixes = {".csv"}
+        vs_root = os.environ.get("CSV_VS_DIR", CSV_VS_DIR_DEFAULT)
+
+    dest_path = _save_uploaded_file(file, dest_dir, allowed_suffixes)
+    file_bytes = await file.read()
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+    with open(dest_path, "wb") as f:
+        f.write(file_bytes)
+
+    def index_uploaded_file():
+        if context_source == "pdfs":
+            db, store_dir = core.create_or_load_vector_store(dest_path, vs_root, _embeddings, reindex=True)
+            register_vectorstore(db, "pdf", store_dir)
+        else:
+            db, store_dir = build_csv_vectorstore(dest_path, vs_root, _embeddings, reindex=True)
+            register_vectorstore(db, "csv", store_dir)
+
+        return {
+            "ok": True,
+            "filename": os.path.basename(dest_path),
+            "stored_at": dest_path,
+            "vectorstore_path": store_dir,
+            "context_source": context_source,
+            "pdf_vectorstores": len(_PDF_DBS),
+            "csv_vectorstores": len(_CSV_DBS),
+        }
+
+    try:
+        return await run_in_threadpool(index_uploaded_file)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to index uploaded file: {e}")
+
 # ----------------- initialization -----------------
 
 # def init_services_from_pdfs(pdfs_dir: str, vs_dir: str, sent_model: str, ollama_model: str, reindex: bool):
@@ -322,7 +449,7 @@ def init_services_from_pdfs(pdfs_dir: str, vs_dir: str, sent_model: str, hf_mode
     Initialize embeddings, load/create vectorstores (one per saved VS or per PDF),
     and initialize the Ollama LLM. Populates global _DBS and _llm.
     """
-    global _DBS, _PDF_DBS, _CSV_DBS, _llm
+    global _DBS, _PDF_DBS, _CSV_DBS, _llm, _embeddings
 
     # find PDFs in pdfs_dir
     pdfs_dir = os.path.abspath(os.path.expanduser(pdfs_dir))
@@ -351,6 +478,7 @@ def init_services_from_pdfs(pdfs_dir: str, vs_dir: str, sent_model: str, hf_mode
     # embeddings
     try:
         embeddings = get_embeddings_provider(model_name=sent_model)
+        _embeddings = embeddings
     except Exception as e:
         print("Failed to initialize sentence-transformers embeddings:", e, file=sys.stderr)
         sys.exit(1)
@@ -364,16 +492,18 @@ def init_services_from_pdfs(pdfs_dir: str, vs_dir: str, sent_model: str, hf_mode
         print("Make sure Ollama is running and the model exists.", file=sys.stderr)
         sys.exit(1)
 
-    # Try loading existing vectorstores from vs_dir
-    _DBS = load_vectorstores_from_dir(vs_dir, embeddings)
+    # Try loading existing vectorstores from disk
+    _DBS = []
     _PDF_DBS = []
     _CSV_DBS = []
-    for db in _DBS:
-        source_type = infer_db_source_type(db, getattr(db, "_source_path", ""))
-        if source_type == "csv":
-            _CSV_DBS.append(db)
-        else:
-            _PDF_DBS.append(db)
+
+    for db in load_vectorstores_from_dir(vs_dir, embeddings):
+        register_vectorstore(db, infer_db_source_type(db, getattr(db, "_source_path", "")), getattr(db, "_source_path", vs_dir))
+
+    csv_vs_dir = os.environ.get("CSV_VS_DIR", CSV_VS_DIR_DEFAULT)
+    for db in load_vectorstores_from_dir(csv_vs_dir, embeddings):
+        register_vectorstore(db, "csv", getattr(db, "_source_path", csv_vs_dir))
+
     if _DBS:
         print(f"Loaded {len(_DBS)} vectorstore(s) from {vs_dir}", file=sys.stderr)
     else:
@@ -400,8 +530,7 @@ def init_services_from_pdfs(pdfs_dir: str, vs_dir: str, sent_model: str, hf_mode
         for up in uploaded:
             try:
                 db, store_dir = core.create_or_load_vector_store(up, vs_dir, embeddings, reindex=reindex)
-                _DBS.append(db)
-                _PDF_DBS.append(db)
+                register_vectorstore(db, "pdf", store_dir)
                 print(f"Created/loaded vectorstore for {up} -> {store_dir}", file=sys.stderr)
             except Exception as e:
                 print(f"Failed to create vectorstore for {up}: {e}", file=sys.stderr)
@@ -445,19 +574,24 @@ def init_services_from_pdfs(pdfs_dir: str, vs_dir: str, sent_model: str, hf_mode
                     print("LangChain FAISS not available; skipping CSV vectorstore creation.", file=sys.stderr)
                 else:
                     try:
-                        # Build FAISS vectorstore using the existing `embeddings` provider
+                        csv_vs_dir = os.environ.get("CSV_VS_DIR", CSV_VS_DIR_DEFAULT)
+                        os.makedirs(csv_vs_dir, exist_ok=True)
+
+                        # Keep the default startup CSV indexed exactly as before, but
+                        # persist it with the CSV vector stores instead of mixing it
+                        # into the PDF vector store directory.
                         csv_db = _FAISS.from_texts(texts, embedding=embeddings, metadatas=metadatas)
-                        # persist under vs_dir/csv_index so load_vectorstores_from_dir can find it later
+                        csv_store_dir = os.path.join(
+                            csv_vs_dir,
+                            os.path.basename(csv_path_env) + "_faiss",
+                        )
                         try:
-                            csv_store_dir = os.path.join(vs_dir, "csv_index")
-                            os.makedirs(csv_store_dir, exist_ok=True)
                             csv_db.save_local(csv_store_dir)
                             print(f"Persisted CSV vectorstore to {csv_store_dir}", file=sys.stderr)
                         except Exception as e:
                             print(f"Warning: could not persist CSV vectorstore: {e}", file=sys.stderr)
-                        # append to global DB list so combined_retrieve will search it
-                        _DBS.append(csv_db)
-                        _CSV_DBS.append(csv_db)
+
+                        register_vectorstore(csv_db, "csv", csv_store_dir)
                         print("CSV vectorstore added to _DBS.", file=sys.stderr)
                     except Exception as e:
                         print(f"CSV FAISS creation error (continuing): {e}", file=sys.stderr)
