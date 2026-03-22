@@ -239,14 +239,12 @@ else:
         sizing_mode="stretch_width",
     )
 
-pdf_upload_button = pn.widgets.Button(name="Upload PDF", button_type="primary", width=130)
-pdf_upload_status = pn.pane.Markdown("Drag and drop a PDF here to add it to the PDF vector stores.", sizing_mode="stretch_width")
+pdf_upload_status = pn.pane.Markdown("", sizing_mode="stretch_width")
 
-csv_upload_button = pn.widgets.Button(name="Upload CSV", button_type="primary", width=130)
-csv_upload_status = pn.pane.Markdown("Drag and drop a CSV here to add it to the CSV vector stores.", sizing_mode="stretch_width")
+csv_upload_status = pn.pane.Markdown("", sizing_mode="stretch_width")
 
-pdf_upload_button.on_click(lambda event: upload_context_file(pdf_dropper, "pdfs", pdf_upload_status))
-csv_upload_button.on_click(lambda event: upload_context_file(csv_dropper, "csvs", csv_upload_status))
+pdf_dropper.param.watch(lambda event: upload_context_file(pdf_dropper, "pdfs", pdf_upload_status) if event.new else None, "value")
+csv_dropper.param.watch(lambda event: upload_context_file(csv_dropper, "csvs", csv_upload_status) if event.new else None, "value")
 
 chat = pn.chat.ChatInterface(
     callback=chat_callback,
@@ -268,9 +266,9 @@ chat_panel = pn.Column(pn.Spacer(height=10),
                               pn.Spacer(width=20), k_slider, 
                               pn.Spacer(width=20), timeout_slider), 
                        pn.Row(
-                           pn.Column("### PDF uploads", "Drop PDF files here", pdf_dropper, pdf_upload_button, pdf_upload_status, sizing_mode="stretch_width"),
+                           pn.Column(pdf_dropper, pdf_upload_status, sizing_mode="stretch_width"),
                            pn.Spacer(width=20),
-                           pn.Column("### CSV uploads", "Drop CSV files here", csv_dropper, csv_upload_button, csv_upload_status, sizing_mode="stretch_width"),
+                           pn.Column(csv_dropper, csv_upload_status, sizing_mode="stretch_width"),
                            sizing_mode="stretch_width",
                        ),
                        pn.layout.Divider(),
