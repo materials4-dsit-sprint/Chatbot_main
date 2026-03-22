@@ -269,6 +269,7 @@ left_panel = pn.Column(
 )
 
 right_panel = pn.Column(
+    pn.Spacer(height=15),
     context_source_selector,
     log_toggle,
     llm_menu,
@@ -280,6 +281,7 @@ right_panel = pn.Column(
     csv_upload_status,
     width=280,
     sizing_mode="fixed",
+    styles={"gap": "15px"},
 )
 
 chat_panel = pn.Row(
