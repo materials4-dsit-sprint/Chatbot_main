@@ -276,7 +276,7 @@ right_panel = pn.Column(
     csv_dropper,
     csv_upload_status,
     width=280,
-    sizing_mode="stretch_height",
+    sizing_mode="fixed",
 )
 
 chat_panel = pn.Row(
