@@ -135,17 +135,6 @@ def _format_retrieved_chunks_message(retrieved: list[dict]) -> str:
         filename = item.get("filename") or os.path.basename(item.get("source") or "") or "PDF"
         page_label = _format_page_label(item.get("page"))
         snippet = item.get("snippet") or "_Empty chunk_"
-        metadata = {
-            "rank": rank,
-            "source_type": item.get("source_type", "pdf"),
-            "filename": filename,
-        }
-        if item.get("source"):
-            metadata["source"] = item["source"]
-        if page_label:
-            metadata["page"] = page_label
-        if item.get("id") is not None:
-            metadata["id"] = item["id"]
 
         summary = f"Document {rank} | {filename}"
         if page_label:
@@ -154,8 +143,7 @@ def _format_retrieved_chunks_message(retrieved: list[dict]) -> str:
         rendered_docs.append(
             "<details>"
             f"<summary><code>{summary}</code></summary>\n\n"
-            f"**metadata**\n```python\n{repr(metadata)}\n```\n\n"
-            f"**page_content**\n```text\n{snippet}\n```\n"
+            f"```text\n{snippet}\n```\n"
             "</details>"
         )
 
