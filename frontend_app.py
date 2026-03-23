@@ -129,18 +129,29 @@ def _format_retrieved_chunks_message(retrieved: list[dict]) -> str:
     if not retrieved:
         return ""
 
-    sections = [f"### Retrieved PDF chunks ({len(retrieved)})"]
+    rendered_docs = []
     for item in retrieved:
-        rank = item.get("rank", "?")
         filename = item.get("filename") or os.path.basename(item.get("source") or "") or "PDF"
         page_label = _format_page_label(item.get("page"))
-        heading = f"**Chunk {rank} | {filename}"
-        if page_label:
-            heading += f" | page {page_label}"
-        heading += "**"
         snippet = item.get("snippet") or "_Empty chunk_"
-        sections.append(f"{heading}\n{snippet}")
-    return "\n\n".join(sections)
+        metadata = {
+            "rank": item.get("rank", "?"),
+            "source_type": item.get("source_type", "pdf"),
+            "filename": filename,
+        }
+        if item.get("source"):
+            metadata["source"] = item["source"]
+        if page_label:
+            metadata["page"] = page_label
+        if item.get("id") is not None:
+            metadata["id"] = item["id"]
+
+        rendered_docs.append(
+            f"Document(metadata={repr(metadata)}, page_content={json.dumps(snippet, ensure_ascii=False)})"
+        )
+
+    body = ",\n\n".join(rendered_docs)
+    return f"### Retriever output ({len(retrieved)} documents)\n```python\n[{body}]\n```"
 
 
 def _schedule_chat_message(chat, doc, message: str) -> None:
