@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 from math import ceil
 from typing import Literal
-from fastapi import FastAPI, HTTPException, Header, Response, File, UploadFile, Form
+from fastapi import FastAPI, HTTPException, Header, File, UploadFile, Form
 from pydantic import BaseModel
 import uvicorn
 from starlette.concurrency import run_in_threadpool
@@ -28,6 +28,7 @@ import numpy as np
 import pandas as pd
 import json
 from hf_utils import build_text_generation_pipeline
+from fastapi.responses import JSONResponse, StreamingResponse
 
 # Defaults
 PDFS_DIR_DEFAULT = os.path.join("/app/storage", "pdfs")
@@ -98,82 +99,183 @@ async def generate(req: GenReq, authorization: str | None = Header(None)):
         raise HTTPException(status_code=503, detail="Server not initialized")
 
     def work():
-        k_used = req.k or 30
-        selected_dbs = get_dbs_for_context_source(req.context_source)
-        if not selected_dbs:
-            source_label = "PDF" if req.context_source == "pdfs" else "CSV"
-            return {"text": f"No indexed {source_label} sources are available."}
+        prepared = prepare_generation(req)
+        if prepared["terminal_text"] is not None:
+            return {"text": prepared["terminal_text"]}
 
-        docs = combined_retrieve(selected_dbs, req.question, k_used)
-        if not docs:
-            return {"text": "No relevant documents found."}
-    
-        rid = str(uuid.uuid4())
-    
-        # --- Conditional retrieval logging ---
-        if req.log:
-            retrieved_summary = []
-            for d in docs:
-                md = getattr(d, "metadata", {}) or {}
-                retrieved_summary.append({
-                    "source_type": md.get("source_type", "pdf"),
-                    "id": md.get("row_id") or md.get("source") or md.get("filename", None),
-                    "snippet": (getattr(d, "page_content", "")[:400])
-                })
-    
-            append_chat_log({
-                "event": "retrieval",
-                "request_id": rid,
-                "question": req.question,
-                "context_source": req.context_source,
-                "k_requested": k_used,
-                "retrieved_count": len(retrieved_summary),
-                "retrieved": retrieved_summary
-            })
-    
-        prompt = build_prompt(req.question, docs)
-    
-        # --- Select LLM model (cached) ---
-        # selected_model = req.model or DEFAULT_OLLAMA_MODEL
-        selected_model = req.model or DEFAULT_HF_MODEL
-        
-        # Validate against allowlist if present
-        try:
-            allowed = ALLOWED_MODELS  # expects ALLOWED_MODELS defined near defaults
-        except NameError:
-            # allowed = [DEFAULT_OLLAMA_MODEL]
-            allowed = [DEFAULT_HF_MODEL]
-    
-        if selected_model not in allowed:
-            raise HTTPException(status_code=400, detail="Invalid model selection")
-    
-        # Get from cache or create and cache
-        if selected_model not in _LLM_CACHE:
-            print(f"Initializing new LLM instance: {selected_model}", file=sys.stderr)
-            # _LLM_CACHE[selected_model] = OllamaLLM(model=selected_model)
-            _LLM_CACHE[selected_model] = build_text_generation_pipeline(selected_model)
-    
-        llm_instance = _LLM_CACHE[selected_model]
-    
-        # Invoke the chosen LLM
-        text = invoke_llm_and_get_text(llm_instance, prompt)
-    
-        # --- Conditional answer logging ---
-        if req.log:
-            append_chat_log({
-                "event": "answer",
-                "request_id": rid,
-                "question": req.question,
-                "context_source": req.context_source,
-                "k_used": k_used,
-                "llm_answer": text,
-                "context_length_chars": len(prompt),
-                "model_used": selected_model,
-            })
-    
+        text = generate_answer_text(prepared, req)
         return {"text": text}
     result = await run_in_threadpool(work)
     return result
+
+
+@app.post("/generate-stream")
+async def generate_stream(req: GenReq, authorization: str | None = Header(None)):
+    if authorization != f"Bearer {API_KEY}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    if not _DBS or _llm is None:
+        raise HTTPException(status_code=503, detail="Server not initialized")
+
+    def event_stream():
+        try:
+            prepared = prepare_generation(req)
+
+            if prepared["retrieved"]:
+                yield json.dumps({
+                    "event": "retrieval",
+                    "context_source": req.context_source,
+                    "k_requested": prepared["k_used"],
+                    "retrieved_count": len(prepared["retrieved"]),
+                    "retrieved": prepared["retrieved"],
+                }, ensure_ascii=False) + "\n"
+
+            if prepared["terminal_text"] is not None:
+                yield json.dumps({
+                    "event": "answer",
+                    "text": prepared["terminal_text"],
+                }, ensure_ascii=False) + "\n"
+                return
+
+            text = generate_answer_text(prepared, req)
+            yield json.dumps({
+                "event": "answer",
+                "text": text,
+                "model_used": prepared["selected_model"],
+            }, ensure_ascii=False) + "\n"
+        except HTTPException as e:
+            yield json.dumps({
+                "event": "error",
+                "status_code": e.status_code,
+                "detail": e.detail,
+            }, ensure_ascii=False) + "\n"
+        except Exception as e:
+            print(f"Streaming generation failed: {e}", file=sys.stderr)
+            yield json.dumps({
+                "event": "error",
+                "status_code": 500,
+                "detail": str(e),
+            }, ensure_ascii=False) + "\n"
+
+    return StreamingResponse(event_stream(), media_type="application/x-ndjson")
+
+
+def _normalize_chunk_text(text: str, limit: int = 1200) -> str:
+    cleaned = " ".join((text or "").split())
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[:limit].rstrip() + "..."
+
+
+def _build_retrieved_summary(docs) -> list[dict]:
+    retrieved_summary = []
+    for idx, d in enumerate(docs, start=1):
+        md = getattr(d, "metadata", {}) or {}
+        source = md.get("source")
+        filename = md.get("filename")
+        if not filename and source:
+            filename = os.path.basename(source)
+
+        row_id = md.get("row_id")
+        retrieved_summary.append({
+            "rank": idx,
+            "source_type": md.get("source_type", "pdf"),
+            "id": row_id if row_id is not None else (source or filename or idx),
+            "source": source,
+            "filename": filename,
+            "page": md.get("page"),
+            "snippet": _normalize_chunk_text(getattr(d, "page_content", "")),
+        })
+    return retrieved_summary
+
+
+def _log_retrieval(req: GenReq, request_id: str, k_used: int, retrieved_summary: list[dict]) -> None:
+    append_chat_log({
+        "event": "retrieval",
+        "request_id": request_id,
+        "question": req.question,
+        "context_source": req.context_source,
+        "k_requested": k_used,
+        "retrieved_count": len(retrieved_summary),
+        "retrieved": retrieved_summary,
+    })
+
+
+def _get_llm_instance(selected_model: str):
+    try:
+        allowed = ALLOWED_MODELS
+    except NameError:
+        allowed = [DEFAULT_HF_MODEL]
+
+    if selected_model not in allowed:
+        raise HTTPException(status_code=400, detail="Invalid model selection")
+
+    if selected_model not in _LLM_CACHE:
+        print(f"Initializing new LLM instance: {selected_model}", file=sys.stderr)
+        _LLM_CACHE[selected_model] = build_text_generation_pipeline(selected_model)
+
+    return _LLM_CACHE[selected_model]
+
+
+def prepare_generation(req: GenReq) -> dict:
+    k_used = req.k or 30
+    selected_dbs = get_dbs_for_context_source(req.context_source)
+    if not selected_dbs:
+        source_label = "PDF" if req.context_source == "pdfs" else "CSV"
+        return {
+            "terminal_text": f"No indexed {source_label} sources are available.",
+            "retrieved": [],
+            "k_used": k_used,
+        }
+
+    docs = combined_retrieve(selected_dbs, req.question, k_used)
+    if not docs:
+        return {
+            "terminal_text": "No relevant documents found.",
+            "retrieved": [],
+            "k_used": k_used,
+        }
+
+    rid = str(uuid.uuid4())
+    retrieved_summary = _build_retrieved_summary(docs)
+
+    if req.log:
+        _log_retrieval(req, rid, k_used, retrieved_summary)
+
+    selected_model = req.model or DEFAULT_HF_MODEL
+    llm_instance = _get_llm_instance(selected_model)
+
+    return {
+        "terminal_text": None,
+        "request_id": rid,
+        "k_used": k_used,
+        "docs": docs,
+        "retrieved": retrieved_summary,
+        "prompt": build_prompt(req.question, docs),
+        "selected_model": selected_model,
+        "llm_instance": llm_instance,
+    }
+
+
+def generate_answer_text(prepared: dict, req: GenReq) -> str:
+    if prepared["terminal_text"] is not None:
+        return prepared["terminal_text"]
+
+    text = invoke_llm_and_get_text(prepared["llm_instance"], prepared["prompt"])
+
+    if req.log:
+        append_chat_log({
+            "event": "answer",
+            "request_id": prepared["request_id"],
+            "question": req.question,
+            "context_source": req.context_source,
+            "k_used": prepared["k_used"],
+            "llm_answer": text,
+            "context_length_chars": len(prepared["prompt"]),
+            "model_used": prepared["selected_model"],
+        })
+
+    return text
 
 # ----------------- multi-vectorstore utilities -----------------
 
@@ -637,8 +739,6 @@ def startup_event():
     init_services_from_pdfs(pdfs_dir, vs_dir, sent_model, hf_model, reindex)
     print("Initialization complete (startup handler).", file=sys.stderr)
 
-
-from fastapi.responses import JSONResponse
 
 from phase_diagram_backend import generate_phase_diagram
 

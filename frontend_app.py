@@ -12,6 +12,7 @@ Final frontend that:
 
 import os
 import json
+import threading
 import requests
 import panel as pn
 import pandas as pd
@@ -29,6 +30,7 @@ pn.extension("filedropper")
 API_KEY = os.environ.get("API_KEY")          # must match backend
 
 ENDPOINT = os.environ.get("ENDPOINT", "http://localhost:9000/generate")
+STREAM_ENDPOINT = os.environ.get("STREAM_ENDPOINT", "http://localhost:9000/generate-stream")
 UPLOAD_ENDPOINT = os.environ.get("UPLOAD_ENDPOINT", "http://localhost:9000/upload-context")
 PHASE_GEN_ENDPOINT = os.environ.get("PHASE_GEN_ENDPOINT", "http://127.0.0.1:9000/phase_gen")
 PHASE_MATERIALS_ENDPOINT = os.environ.get("PHASE_MATERIALS_ENDPOINT", "http://127.0.0.1:9000/materials_phase")
@@ -78,19 +80,25 @@ REQUEST_TIMEOUT = float(os.environ.get("REQUEST_TIMEOUT", "360"))
 # --------------------
 # Chats
 # --------------------
-def chat_callback(message, user, chat):
-    payload = {
+def _build_chat_payload(message: str) -> dict:
+    return {
         "question": message,
         "k": int(k_slider.value),
         "log": bool(log_toggle.value),
         "model": llm_menu.value,
         "context_source": context_source_selector.value,
     }
-    headers = {
+
+
+def _chat_headers() -> dict:
+    return {
         "Authorization": f"Bearer {API_KEY}",
         "Content-Type": "application/json",
     }
-    # use slider-controlled timeout (seconds)
+
+
+def _sync_chat_request(payload: dict) -> str:
+    headers = _chat_headers()
     try:
         response = requests.post(
             ENDPOINT,
@@ -105,6 +113,112 @@ def chat_callback(message, user, chat):
         return data.get("text", "<no response>")
     except requests.exceptions.RequestException as e:
         return f"❌ Request failed: {e}"
+
+
+def _format_page_label(page) -> str:
+    if isinstance(page, int):
+        return str(page + 1)
+    if isinstance(page, str) and page.isdigit():
+        return str(int(page) + 1)
+    if page is None:
+        return ""
+    return str(page)
+
+
+def _format_retrieved_chunks_message(retrieved: list[dict]) -> str:
+    if not retrieved:
+        return ""
+
+    sections = [f"### Retrieved PDF chunks ({len(retrieved)})"]
+    for item in retrieved:
+        rank = item.get("rank", "?")
+        filename = item.get("filename") or os.path.basename(item.get("source") or "") or "PDF"
+        page_label = _format_page_label(item.get("page"))
+        heading = f"**Chunk {rank} | {filename}"
+        if page_label:
+            heading += f" | page {page_label}"
+        heading += "**"
+        snippet = item.get("snippet") or "_Empty chunk_"
+        sections.append(f"{heading}\n{snippet}")
+    return "\n\n".join(sections)
+
+
+def _schedule_chat_message(chat, doc, message: str) -> None:
+    if not message:
+        return
+
+    def _send():
+        chat.send(message, user="Assistant", respond=False)
+
+    if doc is None:
+        _send()
+        return
+
+    doc.add_next_tick_callback(_send)
+
+
+def _handle_pdf_chat_stream(payload: dict, chat, doc) -> None:
+    headers = _chat_headers()
+    try:
+        with requests.post(
+            STREAM_ENDPOINT,
+            json=payload,
+            headers=headers,
+            timeout=float(timeout_slider.value),
+            stream=True,
+        ) as response:
+            if response.status_code != 200:
+                _schedule_chat_message(chat, doc, f"❌ Error {response.status_code}: {response.text}")
+                return
+
+            answer_text = None
+            saw_event = False
+            for raw_line in response.iter_lines(decode_unicode=True):
+                if not raw_line:
+                    continue
+
+                saw_event = True
+                try:
+                    event = json.loads(raw_line)
+                except json.JSONDecodeError:
+                    _schedule_chat_message(chat, doc, f"❌ Invalid stream response: {raw_line}")
+                    return
+
+                event_type = event.get("event")
+                if event_type == "retrieval":
+                    retrieval_message = _format_retrieved_chunks_message(event.get("retrieved", []))
+                    _schedule_chat_message(chat, doc, retrieval_message)
+                elif event_type == "answer":
+                    answer_text = event.get("text", "<no response>")
+                    _schedule_chat_message(chat, doc, answer_text)
+                elif event_type == "error":
+                    detail = event.get("detail", "Unknown streaming error")
+                    status_code = event.get("status_code")
+                    prefix = f"❌ Error {status_code}: " if status_code else "❌ "
+                    _schedule_chat_message(chat, doc, prefix + str(detail))
+                    return
+
+            if not saw_event:
+                _schedule_chat_message(chat, doc, "❌ Empty response from backend.")
+            elif answer_text is None:
+                _schedule_chat_message(chat, doc, "❌ Backend stream ended before returning an answer.")
+    except requests.exceptions.RequestException as e:
+        _schedule_chat_message(chat, doc, f"❌ Request failed: {e}")
+
+
+def chat_callback(message, user, chat):
+    payload = _build_chat_payload(message)
+    if payload["context_source"] == "pdfs":
+        doc = pn.state.curdoc
+        worker = threading.Thread(
+            target=_handle_pdf_chat_stream,
+            args=(payload, chat, doc),
+            daemon=True,
+        )
+        worker.start()
+        return None
+
+    return _sync_chat_request(payload)
 
 
 def upload_context_file(file_widget, context_source: str, status_pane):
