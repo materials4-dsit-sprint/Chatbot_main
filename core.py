@@ -69,6 +69,10 @@ def create_or_load_vector_store(pdf_path: str, vs_root: str, embeddings, reindex
 #         return db.similarity_search(query, k)
 
 def retrieve_docs(db, query: str, k: int = 4):
+    return [doc for doc, _score in retrieve_docs_with_scores(db, query, k=k)]
+
+
+def retrieve_docs_with_scores(db, query: str, k: int = 4):
     """
     Hybrid retrieval:
     1) Extract chemical-like formulas via regex
@@ -96,19 +100,42 @@ def retrieve_docs(db, query: str, k: int = 4):
             regex_hits.append(doc)
 
     # -------- 3. Semantic search --------
+    semantic_hits_with_scores = []
     try:
-        semantic_hits = db.similarity_search(query, k=k)
+        semantic_hits_with_scores = db.similarity_search_with_score(query, k=k)
     except TypeError:
-        semantic_hits = db.similarity_search(query, k)
+        semantic_hits_with_scores = db.similarity_search_with_score(query, k)
+    except AttributeError:
+        try:
+            semantic_hits = db.similarity_search(query, k=k)
+        except TypeError:
+            semantic_hits = db.similarity_search(query, k)
+        semantic_hits_with_scores = [(doc, float(rank)) for rank, doc in enumerate(semantic_hits, start=1)]
 
     # -------- 4. Merge (regex first, deduplicated) --------
-    seen = set()
-    merged = []
+    ranked_hits = []
+    for doc in regex_hits:
+        ranked_hits.append((doc, float("-inf")))
 
-    for doc in regex_hits + semantic_hits:
-        doc_id = id(doc)
-        if doc_id not in seen:
-            seen.add(doc_id)
-            merged.append(doc)
+    for doc, score in semantic_hits_with_scores:
+        try:
+            numeric_score = float(score)
+        except (TypeError, ValueError):
+            numeric_score = float("inf")
+        ranked_hits.append((doc, numeric_score))
 
-    return merged[:k]
+    best_by_key = {}
+    for doc, score in ranked_hits:
+        metadata = getattr(doc, "metadata", {}) or {}
+        key = (
+            metadata.get("source"),
+            metadata.get("page"),
+            metadata.get("start_index"),
+            getattr(doc, "page_content", "")[:512],
+        )
+        existing = best_by_key.get(key)
+        if existing is None or score < existing[1]:
+            best_by_key[key] = (doc, score)
+
+    ordered = sorted(best_by_key.values(), key=lambda item: item[1])
+    return ordered[:k]

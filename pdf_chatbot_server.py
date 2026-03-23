@@ -438,9 +438,8 @@ def build_csv_vectorstore(csv_path: str, vs_root: str, embeddings, reindex: bool
 
 def combined_retrieve(dbs, query: str, k_total: int):
     """
-    Query multiple DBs and merge results. Returns up to k_total documents.
-    Each db is queried for k_per_db = ceil(k_total / len(dbs)).
-    Deduplicates by page content (or string) and returns list of doc objects.
+    Query multiple DBs and merge results with global ranking across stores.
+    Returns up to k_total documents.
     """
     if not dbs:
         return []
@@ -451,45 +450,56 @@ def combined_retrieve(dbs, query: str, k_total: int):
     collected = []
 
     for db in dbs:
-        docs = []
+        docs_with_scores = []
         try:
-            # try core.retrieve_docs if it accepts (db, query, k)
-            if hasattr(core, "retrieve_docs"):
-                docs = core.retrieve_docs(db, query, k=k_per_db) or []
+            if hasattr(core, "retrieve_docs_with_scores"):
+                docs_with_scores = core.retrieve_docs_with_scores(db, query, k=k_per_db) or []
             elif hasattr(db, "similarity_search_with_score"):
-                docs = [d for d, score in db.similarity_search_with_score(query, k=k_per_db)]
+                docs_with_scores = db.similarity_search_with_score(query, k=k_per_db) or []
             elif hasattr(db, "similarity_search"):
-                docs = db.similarity_search(query, k=k_per_db)
+                docs = db.similarity_search(query, k=k_per_db) or []
+                docs_with_scores = [(doc, float(rank)) for rank, doc in enumerate(docs, start=1)]
             else:
-                docs = []
+                docs_with_scores = []
         except Exception as e:
             print(f"Warning: retrieval from a DB failed: {e}", file=sys.stderr)
-            docs = []
+            docs_with_scores = []
 
-        for d in docs:
+        for d, score in docs_with_scores:
             text = getattr(d, "page_content", None)
             if text is None:
                 try:
                     text = str(d)
                 except Exception:
                     text = ""
-            collected.append((text, d))
+            metadata = getattr(d, "metadata", {}) or {}
+            key = (
+                metadata.get("source"),
+                metadata.get("page"),
+                metadata.get("start_index"),
+                text.strip()[:1024],
+            )
+            try:
+                numeric_score = float(score)
+            except (TypeError, ValueError):
+                numeric_score = float("inf")
+            collected.append((numeric_score, key, d))
 
-    # deduplicate by content
-    seen = set()
-    deduped = []
-    for text, doc in collected:
-        key = text.strip()[:4096]
-        if not key:
+    best_docs = {}
+    for score, key, doc in collected:
+        if not key[-1]:
             continue
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(doc)
-        if len(deduped) >= k_total:
-            break
-    print(f"[retrieve] requested k_total={k_total}, collected={len(collected)}, deduped={len(deduped)}", file=sys.stderr)
-    return deduped[:k_total]
+        existing = best_docs.get(key)
+        if existing is None or score < existing[0]:
+            best_docs[key] = (score, doc)
+
+    ranked = sorted(best_docs.values(), key=lambda item: item[0])
+    deduped = [doc for _score, doc in ranked[:k_total]]
+    print(
+        f"[retrieve] requested k_total={k_total}, dbs={len(dbs)}, collected={len(collected)}, deduped={len(deduped)}",
+        file=sys.stderr,
+    )
+    return deduped
 
 @app.post("/upload-context")
 async def upload_context(
