@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 from math import ceil
 from typing import Literal
-from fastapi import FastAPI, HTTPException, Header, Response, File, UploadFile
+from fastapi import FastAPI, HTTPException, Header, Response, File, UploadFile, Form
 from pydantic import BaseModel
 import uvicorn
 from starlette.concurrency import run_in_threadpool
@@ -391,7 +391,7 @@ def combined_retrieve(dbs, query: str, k_total: int):
 
 @app.post("/upload-context")
 async def upload_context(
-    context_source: Literal["pdfs", "csvs"],
+    context_source: Literal["pdfs", "csvs"] = Form(...),
     file: UploadFile = File(...),
     authorization: str | None = Header(None),
 ):
