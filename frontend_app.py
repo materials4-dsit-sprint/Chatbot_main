@@ -11,8 +11,8 @@ Final frontend that:
 """
 
 import os
+import asyncio
 import json
-import threading
 import requests
 import panel as pn
 import pandas as pd
@@ -150,21 +150,7 @@ def _format_retrieved_chunks_message(retrieved: list[dict]) -> str:
     return "\n\n".join(rendered_docs)
 
 
-def _schedule_chat_message(chat, doc, message: str) -> None:
-    if not message:
-        return
-
-    def _send():
-        chat.send(message, user="Assistant", respond=False)
-
-    if doc is None:
-        _send()
-        return
-
-    doc.add_next_tick_callback(_send)
-
-
-def _handle_pdf_chat_stream(payload: dict, chat, doc) -> None:
+def _collect_pdf_chat_stream(payload: dict) -> tuple[str | None, str]:
     headers = _chat_headers()
     try:
         with requests.post(
@@ -175,9 +161,9 @@ def _handle_pdf_chat_stream(payload: dict, chat, doc) -> None:
             stream=True,
         ) as response:
             if response.status_code != 200:
-                _schedule_chat_message(chat, doc, f"❌ Error {response.status_code}: {response.text}")
-                return
+                return None, f"❌ Error {response.status_code}: {response.text}"
 
+            retrieval_message = None
             answer_text = None
             saw_event = False
             for raw_line in response.iter_lines(decode_unicode=True):
@@ -188,44 +174,37 @@ def _handle_pdf_chat_stream(payload: dict, chat, doc) -> None:
                 try:
                     event = json.loads(raw_line)
                 except json.JSONDecodeError:
-                    _schedule_chat_message(chat, doc, f"❌ Invalid stream response: {raw_line}")
-                    return
+                    return None, f"❌ Invalid stream response: {raw_line}"
 
                 event_type = event.get("event")
                 if event_type == "retrieval":
                     retrieval_message = _format_retrieved_chunks_message(event.get("retrieved", []))
-                    _schedule_chat_message(chat, doc, retrieval_message)
                 elif event_type == "answer":
                     answer_text = event.get("text", "<no response>")
-                    _schedule_chat_message(chat, doc, answer_text)
                 elif event_type == "error":
                     detail = event.get("detail", "Unknown streaming error")
                     status_code = event.get("status_code")
                     prefix = f"❌ Error {status_code}: " if status_code else "❌ "
-                    _schedule_chat_message(chat, doc, prefix + str(detail))
-                    return
+                    return retrieval_message, prefix + str(detail)
 
             if not saw_event:
-                _schedule_chat_message(chat, doc, "❌ Empty response from backend.")
-            elif answer_text is None:
-                _schedule_chat_message(chat, doc, "❌ Backend stream ended before returning an answer.")
+                return retrieval_message, "❌ Empty response from backend."
+            if answer_text is None:
+                return retrieval_message, "❌ Backend stream ended before returning an answer."
+            return retrieval_message, answer_text
     except requests.exceptions.RequestException as e:
-        _schedule_chat_message(chat, doc, f"❌ Request failed: {e}")
+        return None, f"❌ Request failed: {e}"
 
 
-def chat_callback(message, user, chat):
+async def chat_callback(message, user, chat):
     payload = _build_chat_payload(message)
     if payload["context_source"] == "pdfs":
-        doc = pn.state.curdoc
-        worker = threading.Thread(
-            target=_handle_pdf_chat_stream,
-            args=(payload, chat, doc),
-            daemon=True,
-        )
-        worker.start()
-        return None
+        retrieval_message, answer_text = await asyncio.to_thread(_collect_pdf_chat_stream, payload)
+        if retrieval_message:
+            chat.send(retrieval_message, user="Assistant", respond=False)
+        return answer_text
 
-    return _sync_chat_request(payload)
+    return await asyncio.to_thread(_sync_chat_request, payload)
 
 
 def upload_context_file(file_widget, context_source: str, status_pane):
