@@ -8,6 +8,7 @@ scikit-learn
 faiss-cpu
 langchain
 langchain-community
+langchain-ollama
 pypdf
 python-multipart
 huggingface_hub

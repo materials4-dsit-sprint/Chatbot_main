@@ -20,16 +20,13 @@ import numpy as np
 import pandas as pd
 import re
 from embeddings import get_embeddings_provider
-# from langchain_ollama.llms import OllamaLLM
 from fastapi import APIRouter
 from typing import List, Dict, Any, Optional
-from hf_utils import build_text_generation_pipeline
+from llm_runtime import build_llm, get_active_pipeline, get_configured_default_model, resolve_model_selection
 router = APIRouter()
 
 from llm_classifier import classify_rows_with_llm, OUT_DIR, _safe_filename
 
-# OLLAMA_MODEL = os.environ.get("MATERIALS_OLLAMA_MODEL", "deepseek-r1:1.5b")
-HF_MODEL = os.environ.get("MATERIALS_HF_MODEL", "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B")
 DEFAULT_MATERIALS_CSV = os.path.join("/app/storage", "materials", "_new_curie_neel_database_processed_cleaned.csv",)
 RAW_CSV = os.path.join("/app/storage", "materials", "materials_cleaned_shortened_names_as_they_are_FULL.csv",)
 VS_BASE_DIR = os.path.join("/app/storage", "csv_vectorstores",)
@@ -39,6 +36,7 @@ _embeddings = None
 _llm = None
 _vs = None
 _df = None
+_LLM_CACHE: dict[str, object] = {}
 
 # ---------------------------------------------------
 # Helpers
@@ -212,7 +210,7 @@ def load_csv(csv_path: Optional[str] = None) -> pd.DataFrame:
 # -------------------------
 def init_services(csv_path: Optional[str] = None):
     """
-    Initialize embeddings provider and Ollama LLM (temperature=0). Load CSV to _df.
+    Initialize embeddings provider and configured LLM. Load CSV to _df.
     Attempt to load optional persistent FAISS (non-fatal).
     """
     global _embeddings, _llm, _df, _vs
@@ -226,11 +224,19 @@ def init_services(csv_path: Optional[str] = None):
     print("[materials] Initializing embeddings provider...")
     _embeddings = get_embeddings_provider()
 
-    # print("[materials] Initializing Ollama LLM (temperature=0)...")
-    # _llm = OllamaLLM(model=OLLAMA_MODEL, temperature=0)
-    
-    print("[materials] Initializing HuggingFace LLM...")
-    _llm = build_text_generation_pipeline(HF_MODEL)
+    default_model = get_configured_default_model(
+        hf_env_vars=("MATERIALS_HF_MODEL", "HF_MODEL"),
+        ollama_env_vars=("MATERIALS_OLLAMA_MODEL", "OLLAMA_MODEL"),
+    )
+    print(
+        f"[materials] Initializing {get_active_pipeline()} LLM: {default_model['actual_model_name']}",
+    )
+    _resolved, _llm = build_llm(
+        str(default_model["model_key"] or default_model["actual_model_name"]),
+        hf_env_vars=("MATERIALS_HF_MODEL", "HF_MODEL"),
+        ollama_env_vars=("MATERIALS_OLLAMA_MODEL", "OLLAMA_MODEL"),
+    )
+    _LLM_CACHE[str(default_model["actual_model_name"])] = _llm
 
     vs_dir = os.path.join(VS_BASE_DIR, _safe_filename(os.path.basename(csv_path or RAW_CSV)))
     try:
@@ -239,6 +245,39 @@ def init_services(csv_path: Optional[str] = None):
     except Exception:
         _vs = None
         print("[materials] No persistent FAISS loaded (optional).")
+
+
+def get_materials_llm_instance(selected_model: str | None = None):
+    global _llm
+
+    if selected_model:
+        model_details = resolve_model_selection(selected_model, strict=False)
+    else:
+        model_details = get_configured_default_model(
+            hf_env_vars=("MATERIALS_HF_MODEL", "HF_MODEL"),
+            ollama_env_vars=("MATERIALS_OLLAMA_MODEL", "OLLAMA_MODEL"),
+        )
+    actual_model_name = str(model_details["actual_model_name"])
+
+    if _llm is not None and actual_model_name in _LLM_CACHE:
+        return model_details, _LLM_CACHE[actual_model_name]
+
+    if _llm is not None and selected_model is None:
+        default_model = get_configured_default_model(
+            hf_env_vars=("MATERIALS_HF_MODEL", "HF_MODEL"),
+            ollama_env_vars=("MATERIALS_OLLAMA_MODEL", "OLLAMA_MODEL"),
+        )
+        if actual_model_name == str(default_model["actual_model_name"]):
+            _LLM_CACHE[actual_model_name] = _llm
+            return model_details, _llm
+
+    _resolved, llm_instance = build_llm(
+        selected_model,
+        hf_env_vars=("MATERIALS_HF_MODEL", "HF_MODEL"),
+        ollama_env_vars=("MATERIALS_OLLAMA_MODEL", "OLLAMA_MODEL"),
+    )
+    _LLM_CACHE[actual_model_name] = llm_instance
+    return model_details, llm_instance
 
 
 # -------------------------
@@ -416,14 +455,12 @@ def build_material_phase_data(
         except Exception as e:
             raise RuntimeError(f"Failed to initialize services before classification: {e}")
 
-        # Prefer the local _llm created by init_services(); require it
         try:
-            from materials_phase import _llm as _local_llm  # type: ignore
-            if _local_llm is None:
-                raise RuntimeError("materials_phase._llm is None after init_services()")
-            classifier_options["llm_instance"] = _local_llm
+            _model_details, classifier_options["llm_instance"] = get_materials_llm_instance(
+                classifier_options.get("model"),
+            )
         except Exception as e:
-            raise RuntimeError(f"llm_instance required but materials_phase._llm unavailable: {e}")
+            raise RuntimeError(f"llm_instance required but materials_phase LLM unavailable: {e}")
 
         # Call classifier with provided or default options
         classify_rows_with_llm(
@@ -461,12 +498,15 @@ def build_material_phase_data(
 def materials_phase_endpoint(
     formula: str,
     log_mode: str = "append",
-    prompt_template: Optional[str] = None
+    prompt_template: Optional[str] = None,
+    model: Optional[str] = None,
 ):
     classifier_options = {}
 
     if prompt_template:
         classifier_options["prompt_template"] = prompt_template
+    if model:
+        classifier_options["model"] = model
 
     data = build_material_phase_data(
         formula=formula,

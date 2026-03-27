@@ -81,6 +81,14 @@ Verify:
 echo $API_KEY
 ```
 
+Optional pipeline selection:
+
+```bash
+export WHICH_PIPELINE="hf"      # or "ollama"
+export HF_MODEL="deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
+export OLLAMA_MODEL="deepseek-r1:1.5b"
+```
+
 ---
 
 # 🤖 Installing DeepSeek Models (Local LLM)

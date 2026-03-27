@@ -23,28 +23,18 @@ from starlette.concurrency import run_in_threadpool
 from pdf_chatbot import build_prompt, invoke_llm_and_get_text
 from embeddings import get_embeddings_provider
 import core
-# from langchain_ollama.llms import OllamaLLM
 import numpy as np
 import pandas as pd
 import json
-from hf_utils import build_text_generation_pipeline
 from fastapi.responses import JSONResponse, StreamingResponse
+from llm_runtime import build_llm, get_active_pipeline, get_configured_default_model, resolve_model_selection
 
 # Defaults
 PDFS_DIR_DEFAULT = os.path.join("/app/storage", "pdfs")
 VS_DIR_DEFAULT = os.path.join("/app/storage", "pdf_vectorstores")
 MATERIALS_DIR_DEFAULT = os.path.join("/app/storage", "materials")
 CSV_VS_DIR_DEFAULT = os.path.join("/app/storage", "csv_vectorstores")
-# DEFAULT_OLLAMA_MODEL = "deepseek-r1:8b"
-DEFAULT_HF_MODEL = "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
 DEFAULT_SENT_MODEL = "all-MiniLM-L6-v2"
-ALLOWED_MODELS = [
-    "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
-    "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
-    "deepseek-ai/DeepSeek-R1-Distill-Llama-8B",
-    "Qwen/Qwen2.5-1.5B-Instruct",
-    "Qwen/Qwen2.5-3B-Instruct",
-]
 app = FastAPI()
 
 # import the router
@@ -69,7 +59,6 @@ _CSV_DBS: list = []
 _llm = None
 _embeddings = None
 # --- LLM cache for model switching ---
-# _LLM_CACHE: dict[str, OllamaLLM] = {}  # this was required for ollama
 _LLM_CACHE: dict[str, object] = {}
 
 #------------------------- simple JSONL logger ------------------------------
@@ -202,19 +191,18 @@ def _log_retrieval(req: GenReq, request_id: str, k_used: int, retrieved_summary:
 
 
 def _get_llm_instance(selected_model: str):
-    try:
-        allowed = ALLOWED_MODELS
-    except NameError:
-        allowed = [DEFAULT_HF_MODEL]
+    model_details = resolve_model_selection(selected_model, strict=False)
 
-    if selected_model not in allowed:
-        raise HTTPException(status_code=400, detail="Invalid model selection")
+    actual_model_name = str(model_details["actual_model_name"])
+    if actual_model_name not in _LLM_CACHE:
+        print(
+            f"Initializing new LLM instance: pipeline={get_active_pipeline()} model={actual_model_name}",
+            file=sys.stderr,
+        )
+        _resolved, llm_instance = build_llm(selected_model, max_new_tokens=1024)
+        _LLM_CACHE[actual_model_name] = llm_instance
 
-    if selected_model not in _LLM_CACHE:
-        print(f"Initializing new LLM instance: {selected_model}", file=sys.stderr)
-        _LLM_CACHE[selected_model] = build_text_generation_pipeline(selected_model)
-
-    return _LLM_CACHE[selected_model]
+    return model_details, _LLM_CACHE[actual_model_name]
 
 
 def prepare_generation(req: GenReq) -> dict:
@@ -242,8 +230,9 @@ def prepare_generation(req: GenReq) -> dict:
     if req.log:
         _log_retrieval(req, rid, k_used, retrieved_summary)
 
-    selected_model = req.model or DEFAULT_HF_MODEL
-    llm_instance = _get_llm_instance(selected_model)
+    default_model = get_configured_default_model()
+    selected_model = req.model or str(default_model["model_key"] or default_model["actual_model_name"])
+    model_details, llm_instance = _get_llm_instance(selected_model)
 
     return {
         "terminal_text": None,
@@ -252,7 +241,8 @@ def prepare_generation(req: GenReq) -> dict:
         "docs": docs,
         "retrieved": retrieved_summary,
         "prompt": build_prompt(req.question, docs),
-        "selected_model": selected_model,
+        "selected_model": str(model_details["actual_model_name"]),
+        "selected_model_key": str(model_details["model_key"] or selected_model),
         "llm_instance": llm_instance,
     }
 
@@ -273,6 +263,7 @@ def generate_answer_text(prepared: dict, req: GenReq) -> str:
             "llm_answer": text,
             "context_length_chars": len(prepared["prompt"]),
             "model_used": prepared["selected_model"],
+            "model_key": prepared["selected_model_key"],
         })
 
     return text
@@ -555,11 +546,16 @@ async def upload_context(
 
 # ----------------- initialization -----------------
 
-# def init_services_from_pdfs(pdfs_dir: str, vs_dir: str, sent_model: str, ollama_model: str, reindex: bool):
-def init_services_from_pdfs(pdfs_dir: str, vs_dir: str, sent_model: str, hf_model: str, reindex: bool):
+def init_services_from_pdfs(
+    pdfs_dir: str,
+    vs_dir: str,
+    sent_model: str,
+    selected_model: str | None,
+    reindex: bool,
+):
     """
     Initialize embeddings, load/create vectorstores (one per saved VS or per PDF),
-    and initialize the Ollama LLM. Populates global _DBS and _llm.
+    and initialize the configured LLM. Populates global _DBS and _llm.
     """
     global _DBS, _PDF_DBS, _CSV_DBS, _llm, _embeddings
 
@@ -595,13 +591,13 @@ def init_services_from_pdfs(pdfs_dir: str, vs_dir: str, sent_model: str, hf_mode
         print("Failed to initialize sentence-transformers embeddings:", e, file=sys.stderr)
         sys.exit(1)
 
-    # Ollama
     try:
-        # _llm = OllamaLLM(model=ollama_model)
-        _llm = build_text_generation_pipeline(hf_model, max_new_tokens=1024)
+        model_details, _llm = build_llm(selected_model, max_new_tokens=1024)
+        _LLM_CACHE[str(model_details["actual_model_name"])] = _llm
     except Exception as e:
-        print("Failed to initialize Ollama LLM:", e, file=sys.stderr)
-        print("Make sure Ollama is running and the model exists.", file=sys.stderr)
+        print(f"Failed to initialize {get_active_pipeline()} LLM: {e}", file=sys.stderr)
+        if get_active_pipeline() == "ollama":
+            print("Make sure Ollama is running and the model exists.", file=sys.stderr)
         sys.exit(1)
 
     # Try loading existing vectorstores from disk
@@ -740,13 +736,20 @@ def startup_event():
     pdfs_dir = os.environ.get("PDFS_DIR", PDFS_DIR_DEFAULT)
     vs_dir = os.environ.get("VS_DIR", VS_DIR_DEFAULT)
     sent_model = os.environ.get("SENT_MODEL", DEFAULT_SENT_MODEL)
-    # ollama_model = os.environ.get("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
-    hf_model = os.environ.get("HF_MODEL", DEFAULT_HF_MODEL)
+    default_model = get_configured_default_model()
     reindex = os.environ.get("REINDEX", "false").lower() == "true"
 
-    print("Starting initialization inside FastAPI startup handler...", file=sys.stderr)
-    # init_services_from_pdfs(pdfs_dir, vs_dir, sent_model, ollama_model, reindex)
-    init_services_from_pdfs(pdfs_dir, vs_dir, sent_model, hf_model, reindex)
+    print(
+        f"Starting initialization inside FastAPI startup handler with WHICH_PIPELINE={get_active_pipeline()}...",
+        file=sys.stderr,
+    )
+    init_services_from_pdfs(
+        pdfs_dir,
+        vs_dir,
+        sent_model,
+        str(default_model["model_key"] or default_model["actual_model_name"]),
+        reindex,
+    )
     print("Initialization complete (startup handler).", file=sys.stderr)
 
 
@@ -812,8 +815,8 @@ def parse_args():
     p = argparse.ArgumentParser(description="PDF Chat model server (folder-driven)")
     p.add_argument("--pdfs-dir", default=PDFS_DIR_DEFAULT, help="Directory containing PDFs (default ./pdfs)")
     p.add_argument("--vs-dir", default=VS_DIR_DEFAULT, help="Vectorstore directory")
-    # p.add_argument("--ollama-model", default=DEFAULT_OLLAMA_MODEL)
-    p.add_argument("--hf-model", default=DEFAULT_HF_MODEL)
+    p.add_argument("--hf-model", default=os.environ.get("HF_MODEL"))
+    p.add_argument("--ollama-model", default=os.environ.get("OLLAMA_MODEL"))
     p.add_argument("--sent-model", default=DEFAULT_SENT_MODEL)
     p.add_argument("--reindex", action="store_true")
     p.add_argument("--host", default="127.0.0.1")
@@ -822,7 +825,7 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-    # init_services_from_pdfs(args.pdfs_dir, args.vs_dir, args.sent_model, args.ollama_model, args.reindex)
-    init_services_from_pdfs(args.pdfs_dir, args.vs_dir, args.sent_model, args.hf_model, args.reindex)
+    cli_model = args.ollama_model if get_active_pipeline() == "ollama" else args.hf_model
+    init_services_from_pdfs(args.pdfs_dir, args.vs_dir, args.sent_model, cli_model, args.reindex)
     print("Initialization complete. Starting server on http://%s:%d" % (args.host, args.port))
     uvicorn.run("pdf_chatbot_server:app", host=args.host, port=args.port, log_level="info")

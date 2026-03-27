@@ -12,16 +12,13 @@ import sys
 import os
 import argparse
 from langchain_core.prompts import ChatPromptTemplate
-# from langchain_ollama.llms import OllamaLLM
 
 from embeddings import get_embeddings_provider
-from hf_utils import build_text_generation_pipeline
+from llm_runtime import build_llm, get_active_pipeline
 import core
 
 PDFS_DIR_DEFAULT = os.path.join("/app/storage", "pdfs")
 VS_DIR_DEFAULT = os.path.join("/app/storage", "pdf_vectorstores")
-# DEFAULT_OLLAMA_MODEL = "deepseek-r1:8b"
-DEFAULT_HF_MODEL = "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
 DEFAULT_SENT_MODEL = "all-MiniLM-L6-v2"
 
 """You are an assistant that answers questions using the retrieved context.
@@ -100,8 +97,8 @@ def parse_args():
     p.add_argument("pdf", help="Path to PDF")
     p.add_argument("--pdfs-dir", default=PDFS_DIR_DEFAULT)
     p.add_argument("--vs-dir", default=VS_DIR_DEFAULT)
-    # p.add_argument("--ollama-model", default=DEFAULT_OLLAMA_MODEL)
-    p.add_argument("--hf-model", default=DEFAULT_HF_MODEL)
+    p.add_argument("--hf-model", default=os.environ.get("HF_MODEL"))
+    p.add_argument("--ollama-model", default=os.environ.get("OLLAMA_MODEL"))
     p.add_argument("--sent-model", default=DEFAULT_SENT_MODEL)
     p.add_argument("--reindex", action="store_true")
     p.add_argument("-k", type=int, default=30, help="Number of retrieved chunks")
@@ -200,14 +197,11 @@ def main():
         print(e)
         sys.exit(1)
 
-    # ---- Initialize Ollama LLM (generation only) ----
     try:
-        # llm = OllamaLLM(model=args.ollama_model)
-        llm = build_text_generation_pipeline(args.hf_model)
+        selected_model = args.ollama_model if get_active_pipeline() == "ollama" else args.hf_model
+        _model_details, llm = build_llm(selected_model)
     except Exception as e:
-        # print("Failed to initialize Ollama LLM:")
-        # print("Ensure Ollama is running and the model exists (check `ollama list`).")
-        print("Failed to initialize HF LLM:")
+        print(f"Failed to initialize {get_active_pipeline()} LLM:")
         print(e)
         sys.exit(1)
 

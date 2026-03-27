@@ -20,6 +20,7 @@ import holoviews as hv
 hv.extension("bokeh")
 import hvplot.pandas  # activates hvplot
 from collections import OrderedDict
+from llm_runtime import get_model_options, get_default_model_key
 pn.config.sizing_mode = "stretch_width"
 pn.extension("filedropper")
 
@@ -296,14 +297,8 @@ timeout_slider = pn.widgets.DiscreteSlider(
 
 llm_menu = pn.widgets.Select(
     name="LLM",
-    options={
-        "DeepSeek:1.5B": "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
-        "DeepSeek:7B": "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
-        "DeepSeek:8B": "deepseek-ai/DeepSeek-R1-Distill-Llama-8B",
-        "Qwen:1.5B": "Qwen/Qwen2.5-1.5B-Instruct",
-        "Qwen:3B": "Qwen/Qwen2.5-3B-Instruct",
-    },
-    value="deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
+    options=get_model_options(),
+    value=get_default_model_key(),
     width=160
 )
 
@@ -608,7 +603,12 @@ llm_mat_a = pn.widgets.TextInput(name="Material A (1-x)", value="La", width=180)
 llm_mat_b = pn.widgets.TextInput(name="Material B (x)", value="Sr", width=180)
 llm_mat_c = pn.widgets.TextInput(name="Material C (invariant)", value="MnO3", width=180)
 llm_steps = pn.widgets.IntInput(name="Steps", value=101, start=3, width=180)
-llm_select = pn.widgets.Select(name="LLM", options=["deepseek-r1:1.5b"], value="deepseek-r1:1.5b", width=180)
+llm_select = pn.widgets.Select(
+    name="LLM",
+    options=get_model_options(),
+    value=get_default_model_key(),
+    width=180,
+)
 
 llm_log_mode = pn.widgets.RadioButtonGroup(
     name="Log mode",
@@ -679,7 +679,8 @@ def on_llm_fetch(event=None):
 
     formula = f"{A}(1-x){B}(x){C}"
     params = {"formula": formula, "log_mode": llm_log_mode.value,
-              "prompt_template": prompt_template_input.value,}
+              "prompt_template": prompt_template_input.value,
+              "model": llm_select.value,}
 
     try:
         resp = requests.post(PHASE_MATERIALS_ENDPOINT, params=params, timeout=300, headers={"Authorization": f"Bearer {API_KEY}"})
