@@ -87,6 +87,7 @@ Optional pipeline selection:
 export WHICH_PIPELINE="hf"      # or "ollama"
 export HF_MODEL="deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
 export OLLAMA_MODEL="deepseek-r1:1.5b"
+export OLLAMA_BASE_URL="http://127.0.0.1:11434"
 ```
 
 ---

@@ -27,7 +27,7 @@ import numpy as np
 import pandas as pd
 import json
 from fastapi.responses import JSONResponse, StreamingResponse
-from llm_runtime import build_llm, get_active_pipeline, get_configured_default_model, resolve_model_selection
+from llm_runtime import build_llm, get_active_pipeline, get_configured_default_model, get_ollama_base_url, resolve_model_selection
 
 # Defaults
 PDFS_DIR_DEFAULT = os.path.join("/app/storage", "pdfs")
@@ -592,6 +592,11 @@ def init_services_from_pdfs(
         sys.exit(1)
 
     try:
+        if get_active_pipeline() == "ollama":
+            print(
+                f"Using Ollama endpoint: {get_ollama_base_url() or 'http://127.0.0.1:11434'}",
+                file=sys.stderr,
+            )
         model_details, _llm = build_llm(selected_model, max_new_tokens=1024)
         _LLM_CACHE[str(model_details["actual_model_name"])] = _llm
     except Exception as e:

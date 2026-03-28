@@ -142,6 +142,20 @@ def _import_ollama_llm():
         return OllamaLLM
 
 
+def get_ollama_base_url() -> str | None:
+    raw_value = os.environ.get("OLLAMA_BASE_URL") or os.environ.get("OLLAMA_HOST")
+    if not raw_value:
+        return None
+
+    value = raw_value.strip()
+    if not value:
+        return None
+
+    if "://" not in value:
+        value = f"http://{value}"
+    return value
+
+
 def build_llm(
     selection: str | None = None,
     *,
@@ -171,6 +185,9 @@ def build_llm(
             ollama_kwargs["temperature"] = kwargs["temperature"]
         if "max_new_tokens" in kwargs:
             ollama_kwargs["num_predict"] = kwargs["max_new_tokens"]
+        base_url = get_ollama_base_url()
+        if base_url:
+            ollama_kwargs["base_url"] = base_url
         llm = OllamaLLM(model=actual_model_name, **ollama_kwargs)
     else:
         llm = build_text_generation_pipeline(actual_model_name, **kwargs)

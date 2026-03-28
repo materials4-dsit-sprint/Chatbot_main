@@ -14,7 +14,7 @@ import argparse
 from langchain_core.prompts import ChatPromptTemplate
 
 from embeddings import get_embeddings_provider
-from llm_runtime import build_llm, get_active_pipeline
+from llm_runtime import build_llm, get_active_pipeline, get_ollama_base_url
 import core
 
 PDFS_DIR_DEFAULT = os.path.join("/app/storage", "pdfs")
@@ -109,6 +109,7 @@ def invoke_llm_and_get_text(llm, prompt_text):
     Try common LLM call patterns and return a single string response.
     Works for LLMs that implement __call__, .generate, .predict, or .invoke-like APIs.
     """
+    last_exc = None
     # 1) If llm is callable (has __call__), try it and handle different return shapes
     try:
         if callable(llm):
@@ -173,10 +174,15 @@ def invoke_llm_and_get_text(llm, prompt_text):
             last_exc = e
 
     # 4) Give a helpful error if none of the above worked
+    ollama_hint = ""
+    if get_active_pipeline() == "ollama" and "ConnectError" in repr(last_exc):
+        ollama_target = get_ollama_base_url() or "http://127.0.0.1:11434"
+        ollama_hint = f" Ollama endpoint: {ollama_target}."
+
     raise RuntimeError(
         "Unable to invoke LLM with known call patterns. "
         "Tried __call__, .generate, .predict, .complete, .invoke. "
-        f"Last error: {repr(last_exc)}"
+        f"Last error: {repr(last_exc)}.{ollama_hint}"
     )
 
 
