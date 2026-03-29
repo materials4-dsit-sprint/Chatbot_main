@@ -43,7 +43,17 @@ _LLM_CACHE: dict[str, object] = {}
 # ---------------------------------------------------
 def _sanitize_df_for_json(df: pd.DataFrame) -> list:
     """
-    Convert DataFrame to JSON-safe list (coerce numeric, drop inf, nan -> null in JSON).
+    Convert a dataframe into a JSON-safe list of records.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Dataframe to serialize.
+
+    Returns
+    -------
+    list
+        JSON-safe list of record dictionaries.
     """
     if df is None or df.empty:
         return []
@@ -58,10 +68,17 @@ def _sanitize_df_for_json(df: pd.DataFrame) -> list:
 
 def _build_phase_data_from_log_df(log_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     """
-    Given the authoritative LLM log DataFrame, build two DataFrames:
-      - curie_df with columns ["x","T","Name", "_id", "DOI"]
-      - neel_df same
-    Uses fields: parsed_include, parsed_x, Normalised Value, Type, Names, _id, DOI (if present).
+    Build Curie and Neel plotting dataframes from the classifier log.
+
+    Parameters
+    ----------
+    log_df : pandas.DataFrame
+        Classifier log dataframe.
+
+    Returns
+    -------
+    Dict[str, pandas.DataFrame]
+        Mapping containing `"curie"` and `"neel"` dataframes.
     """
     if log_df is None or log_df.empty:
         return {"curie": pd.DataFrame(), "neel": pd.DataFrame()}
@@ -90,7 +107,17 @@ def _build_phase_data_from_log_df(log_df: pd.DataFrame) -> Dict[str, pd.DataFram
 
 def normalize_names(value: Any) -> str:
     """
-    Convert Names to canonical string. Handles JSON-like list strings such as '["fluorinated-MoS2"]'.
+    Normalize a material name value into a canonical string.
+
+    Parameters
+    ----------
+    value : Any
+        Raw value to normalize.
+
+    Returns
+    -------
+    str
+        Canonicalized name string.
     """
     if value is None:
         return ""
@@ -113,10 +140,17 @@ def normalize_names(value: Any) -> str:
 
 def _extract_element_tokens(formula: str) -> List[str]:
     """
-    Extract meaningful formula blocks.
-    Example:
-        "La Sr MnO3" -> ["La", "Sr", "MnO3"]
-        "La(1-x)Sr(x)MnO3" -> ["La", "Sr", "MnO3"]
+    Extract formula-like element tokens from a material expression.
+
+    Parameters
+    ----------
+    formula : str
+        Formula string to tokenize.
+
+    Returns
+    -------
+    List[str]
+        Ordered list of extracted element tokens.
     """
     if not formula:
         return []
@@ -140,6 +174,21 @@ def _extract_element_tokens(formula: str) -> List[str]:
 # Embedding helpers
 # -------------------------
 def _cosine(a: np.ndarray, b: np.ndarray) -> float:
+    """
+    Compute cosine similarity between two vectors.
+
+    Parameters
+    ----------
+    a : numpy.ndarray
+        First vector.
+    b : numpy.ndarray
+        Second vector.
+
+    Returns
+    -------
+    float
+        Cosine similarity score.
+    """
     a = np.asarray(a, dtype=float)
     b = np.asarray(b, dtype=float)
     na = np.linalg.norm(a)
@@ -150,7 +199,19 @@ def _cosine(a: np.ndarray, b: np.ndarray) -> float:
 
 def _embed_query_and_docs(query: str, texts: List[str]) -> (np.ndarray, List[np.ndarray]):
     """
-    Embed query and docs using the embeddings provider. Tries embed_query / embed_documents patterns.
+    Embed the query and candidate texts using the active embeddings provider.
+
+    Parameters
+    ----------
+    query : str
+        Query text to embed.
+    texts : List[str]
+        Candidate row texts to embed.
+
+    Returns
+    -------
+    tuple
+        Query vector and list of document vectors.
     """
     global _embeddings
     if _embeddings is None:
@@ -185,8 +246,17 @@ def _embed_query_and_docs(query: str, texts: List[str]) -> (np.ndarray, List[np.
 # -------------------------
 def load_csv(csv_path: Optional[str] = None) -> pd.DataFrame:
     """
-    Load cleaned CSV with header: Names, Type, Normalised Value, _id.
-    Normalize Names and coerce Normalised Value to numeric.
+    Load and normalize the materials CSV used by the LLM pipeline.
+
+    Parameters
+    ----------
+    csv_path : Optional[str], optional
+        Explicit CSV path override.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Cleaned dataframe ready for filtering and ranking.
     """
     path = csv_path or RAW_CSV
     df = pd.read_csv(path, encoding="utf-8", low_memory=False)
@@ -210,8 +280,17 @@ def load_csv(csv_path: Optional[str] = None) -> pd.DataFrame:
 # -------------------------
 def init_services(csv_path: Optional[str] = None):
     """
-    Initialize embeddings provider and configured LLM. Load CSV to _df.
-    Attempt to load optional persistent FAISS (non-fatal).
+    Initialize cached embeddings, model, and dataframe state.
+
+    Parameters
+    ----------
+    csv_path : Optional[str], optional
+        Explicit CSV path override.
+
+    Returns
+    -------
+    None
+        This function initializes module-level services in place.
     """
     global _embeddings, _llm, _df, _vs
 
@@ -248,6 +327,19 @@ def init_services(csv_path: Optional[str] = None):
 
 
 def get_materials_llm_instance(selected_model: str | None = None):
+    """
+    Get or create the materials LLM instance for classification.
+
+    Parameters
+    ----------
+    selected_model : str | None, optional
+        Explicit model selection override.
+
+    Returns
+    -------
+    tuple
+        Resolved model metadata and the instantiated LLM object.
+    """
     global _llm
 
     if selected_model:
@@ -285,8 +377,19 @@ def get_materials_llm_instance(selected_model: str | None = None):
 # -------------------------
 def prefilter_by_formula_tokens(formula: str, csv_path: Optional[str] = None) -> pd.DataFrame:
     """
-    Extract element tokens from formula and return rows where Names contains ALL tokens (case-insensitive).
-    Writes a prefilter CSV to OUT_DIR for audit: <safe_formula>_prefilter.csv
+    Prefilter rows whose names match all tokens extracted from the formula.
+
+    Parameters
+    ----------
+    formula : str
+        Target material formula.
+    csv_path : Optional[str], optional
+        Explicit CSV path override.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Prefiltered candidate dataframe.
     """
     init_services(csv_path)
     tokens = _extract_element_tokens(formula)
@@ -314,8 +417,21 @@ def prefilter_by_formula_tokens(formula: str, csv_path: Optional[str] = None) ->
 # -------------------------
 def rank_prefiltered_rows_by_similarity(formula: str, df_pref: pd.DataFrame, k: int = 200) -> pd.DataFrame:
     """
-    Compute embeddings for formula and prefiltered rows and return top-k by cosine score.
-    Writes candidates CSV: <safe_formula>_candidates.csv
+    Rank candidate rows by embedding similarity to the target formula.
+
+    Parameters
+    ----------
+    formula : str
+        Target material formula.
+    df_pref : pandas.DataFrame
+        Prefiltered candidate dataframe.
+    k : int, optional
+        Maximum number of rows to keep, by default 200.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Ranked dataframe of top candidate rows.
     """
     texts = []
     for _, r in df_pref.iterrows():
@@ -350,13 +466,23 @@ def build_material_phase_data(
     # prompt_template: str,
 ) -> Dict[str, Any]:
     """
-    Orchestrate prefilter -> (rank) -> LLM -> read log -> return JSON-ready data.
+    Build phase data by running the full LLM classification workflow.
 
-    log_mode: "use" | "append" | "recompute"
-      - use: attempt to use existing OUT_DIR/<safe>_llm_log.csv (no LLM call)
-      - append: call LLM on new candidates and append to log
-      - recompute: delete existing log then run fresh
-    classifier_options: dict passed to classify_rows_with_llm (batch_size, pause_batches, llm_instance, etc.)
+    Parameters
+    ----------
+    formula : str
+        Target material formula.
+    csv_path : Optional[str], optional
+        Explicit CSV path override.
+    log_mode : str, optional
+        Log handling mode: `"use"`, `"append"`, or `"recompute"`.
+    classifier_options : Optional[Dict[str, Any]], optional
+        Extra options forwarded to the classifier.
+
+    Returns
+    -------
+    Dict[str, Any]
+        JSON-ready Curie and Neel data with metadata.
     """
 
     if log_mode not in ("use", "append", "recompute"):
@@ -501,6 +627,25 @@ def llm_phase_gen_endpoint(
     prompt_template: Optional[str] = None,
     model: Optional[str] = None,
 ):
+    """
+    Serve LLM-based phase diagram data through the FastAPI router.
+
+    Parameters
+    ----------
+    formula : str
+        Target material formula.
+    log_mode : str, optional
+        Log handling mode for the classifier.
+    prompt_template : Optional[str], optional
+        Prompt template override.
+    model : Optional[str], optional
+        Model selection override.
+
+    Returns
+    -------
+    Dict[str, Any]
+        JSON response payload for the frontend.
+    """
     classifier_options = {}
 
     if prompt_template:

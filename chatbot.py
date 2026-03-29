@@ -40,6 +40,21 @@ Answer:
 #     return TEMPLATE.format(question=question, context=context)
 
 def build_prompt(question: str, docs) -> str:
+    """
+    Build the final prompt from a question and retrieved documents.
+
+    Parameters
+    ----------
+    question : str
+        User question to answer.
+    docs : list
+        Retrieved document objects used as context.
+
+    Returns
+    -------
+    str
+        Prompt text passed to the language model.
+    """
     context_blocks = []
 
     for d in docs:
@@ -66,6 +81,23 @@ def build_prompt(question: str, docs) -> str:
     return TEMPLATE.format(question=question, context=context)
 
 def run_repl(db, llm, k):
+    """
+    Run the interactive terminal chat loop for a loaded PDF vector store.
+
+    Parameters
+    ----------
+    db : object
+        Vector store used for retrieval.
+    llm : object
+        Language model used for answer generation.
+    k : int
+        Number of chunks to retrieve per question.
+
+    Returns
+    -------
+    None
+        This function runs until the user exits the session.
+    """
     print("\nPDF loaded. Ask questions (type 'bye' to exit).")
     while True:
         try:
@@ -93,6 +125,19 @@ def run_repl(db, llm, k):
 
 
 def parse_args():
+    """
+    Parse command-line arguments for the chatbot entry point.
+
+    Parameters
+    ----------
+    None
+        Arguments are read from the process command line.
+
+    Returns
+    -------
+    argparse.Namespace
+        Parsed command-line options.
+    """
     p = argparse.ArgumentParser(description="PDF Chat (minimal main)")
     p.add_argument("pdf", help="Path to PDF")
     p.add_argument("--pdfs-dir", default=PDFS_DIR_DEFAULT)
@@ -106,8 +151,19 @@ def parse_args():
 
 def invoke_llm_and_get_text(llm, prompt_text):
     """
-    Try common LLM call patterns and return a single string response.
-    Works for LLMs that implement __call__, .generate, .predict, or .invoke-like APIs.
+    Invoke the LLM using several compatible calling conventions.
+
+    Parameters
+    ----------
+    llm : object
+        Language model instance to invoke.
+    prompt_text : str
+        Prompt text passed to the language model.
+
+    Returns
+    -------
+    str
+        Generated response text extracted from the model output.
     """
     last_exc = None
     # 1) If llm is callable (has __call__), try it and handle different return shapes
@@ -187,6 +243,19 @@ def invoke_llm_and_get_text(llm, prompt_text):
 
 
 def main():
+    """
+    Run the command-line chatbot workflow end to end.
+
+    Parameters
+    ----------
+    None
+        Inputs are taken from command-line arguments.
+
+    Returns
+    -------
+    None
+        This function initializes resources and starts the interactive loop.
+    """
     args = parse_args()
 
     # ---- Validate PDF path ----

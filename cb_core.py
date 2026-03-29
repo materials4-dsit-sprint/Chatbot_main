@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""
+Core utilities for file ingestion, vector store management, and retrieval.
+"""
 
-# cb_core.py
 import os
 from typing import List
 from langchain_community.document_loaders import PyPDFLoader
@@ -13,6 +15,21 @@ CHUNK_SIZE = 2000
 CHUNK_OVERLAP = 100
 
 def upload_pdf(src_path: str, dest_dir: str) -> str:
+    """
+    Copy a PDF into the managed storage directory.
+
+    Parameters
+    ----------
+    src_path : str
+        Source path to the PDF file.
+    dest_dir : str
+        Destination directory where the PDF should be stored.
+
+    Returns
+    -------
+    str
+        Absolute path to the stored PDF file.
+    """
     if not os.path.isfile(src_path):
         raise FileNotFoundError(f"PDF not found: {src_path}")
     os.makedirs(dest_dir, exist_ok=True)
@@ -24,8 +41,23 @@ def upload_pdf(src_path: str, dest_dir: str) -> str:
 
 def create_or_load_vector_store(pdf_path: str, vs_root: str, embeddings, reindex: bool = False):
     """
-    Create or load a FAISS vector store for a single PDF.
-    embeddings must implement embed_documents/embed_query (see cb_embeddings.py)
+    Create or load a FAISS vector store for a PDF file.
+
+    Parameters
+    ----------
+    pdf_path : str
+        Path to the PDF file to index.
+    vs_root : str
+        Root directory where vector stores are persisted.
+    embeddings : object
+        Embeddings provider implementing `embed_documents` and `embed_query`.
+    reindex : bool, optional
+        Whether to rebuild an existing vector store, by default False.
+
+    Returns
+    -------
+    tuple
+        Loaded or newly created vector store together with its storage path.
     """
     os.makedirs(vs_root, exist_ok=True)
     name = os.path.basename(pdf_path)
@@ -69,16 +101,43 @@ def create_or_load_vector_store(pdf_path: str, vs_root: str, embeddings, reindex
 #         return db.similarity_search(query, k)
 
 def retrieve_docs(db, query: str, k: int = 4):
+    """
+    Retrieve documents without exposing similarity scores.
+
+    Parameters
+    ----------
+    db : object
+        Vector store instance to query.
+    query : str
+        Query text to search for.
+    k : int, optional
+        Maximum number of documents to return, by default 4.
+
+    Returns
+    -------
+    list
+        Retrieved document objects ordered by relevance.
+    """
     return [doc for doc, _score in retrieve_docs_with_scores(db, query, k=k)]
 
 
 def retrieve_docs_with_scores(db, query: str, k: int = 4):
     """
-    Hybrid retrieval:
-    1) Extract chemical-like formulas via regex
-    2) Exact substring match (regex hits)
-    3) Semantic FAISS similarity search
-    4) Merge (regex results first, deduplicated)
+    Retrieve documents and scores using hybrid exact-match and semantic search.
+
+    Parameters
+    ----------
+    db : object
+        Vector store instance to query.
+    query : str
+        Query text to search for.
+    k : int, optional
+        Maximum number of results to return, by default 4.
+
+    Returns
+    -------
+    list
+        List of `(document, score)` tuples ordered by best match first.
     """
 
     # -------- 1. Extract chemical-like formulas --------

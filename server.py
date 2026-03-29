@@ -67,7 +67,19 @@ LOG_PATH = os.path.join("/app/storage", "logs", "chat_logs.jsonl")
 os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
 
 def append_chat_log(entry: dict):
-    """Append one JSON object as a line to LOG_PATH (safe append)."""
+    """
+    Append a structured chat event to the JSONL log file.
+
+    Parameters
+    ----------
+    entry : dict
+        Log payload to append.
+
+    Returns
+    -------
+    None
+        This function writes to disk as a side effect.
+    """
     try:
         entry.setdefault("ts", datetime.datetime.utcnow().isoformat() + "Z")
         with open(LOG_PATH, "a", encoding="utf-8") as f:
@@ -80,6 +92,21 @@ def append_chat_log(entry: dict):
 
 @app.post("/generate")
 async def generate(req: GenReq, authorization: str | None = Header(None)):
+    """
+    Handle non-streaming answer generation requests.
+
+    Parameters
+    ----------
+    req : GenReq
+        Parsed generation request payload.
+    authorization : str | None, optional
+        Bearer authorization header.
+
+    Returns
+    -------
+    dict
+        JSON payload containing the generated answer text.
+    """
     # auth
     if authorization != f"Bearer {API_KEY}":
         raise HTTPException(status_code=401, detail="Unauthorized")
@@ -88,6 +115,19 @@ async def generate(req: GenReq, authorization: str | None = Header(None)):
         raise HTTPException(status_code=503, detail="Server not initialized")
 
     def work():
+        """
+        Execute generation in a worker thread.
+
+        Parameters
+        ----------
+        None
+            Inputs are captured from the outer scope.
+
+        Returns
+        -------
+        dict
+            Result payload returned to the API handler.
+        """
         prepared = prepare_generation(req)
         if prepared["terminal_text"] is not None:
             return {"text": prepared["terminal_text"]}
@@ -100,6 +140,21 @@ async def generate(req: GenReq, authorization: str | None = Header(None)):
 
 @app.post("/generate-stream")
 async def generate_stream(req: GenReq, authorization: str | None = Header(None)):
+    """
+    Handle streaming answer generation requests.
+
+    Parameters
+    ----------
+    req : GenReq
+        Parsed generation request payload.
+    authorization : str | None, optional
+        Bearer authorization header.
+
+    Returns
+    -------
+    StreamingResponse
+        NDJSON stream containing retrieval and answer events.
+    """
     if authorization != f"Bearer {API_KEY}":
         raise HTTPException(status_code=401, detail="Unauthorized")
 
@@ -107,6 +162,19 @@ async def generate_stream(req: GenReq, authorization: str | None = Header(None))
         raise HTTPException(status_code=503, detail="Server not initialized")
 
     def event_stream():
+        """
+        Yield retrieval and answer events for the streaming response.
+
+        Parameters
+        ----------
+        None
+            Inputs are captured from the outer scope.
+
+        Returns
+        -------
+        Iterator[str]
+            NDJSON event strings for the client stream.
+        """
         try:
             prepared = prepare_generation(req)
 
@@ -150,6 +218,21 @@ async def generate_stream(req: GenReq, authorization: str | None = Header(None))
 
 
 def _normalize_chunk_text(text: str, limit: int = 1200) -> str:
+    """
+    Normalize and optionally truncate retrieved chunk text for logging.
+
+    Parameters
+    ----------
+    text : str
+        Raw chunk text.
+    limit : int, optional
+        Maximum number of characters to keep, by default 1200.
+
+    Returns
+    -------
+    str
+        Normalized chunk preview text.
+    """
     cleaned = " ".join((text or "").split())
     if len(cleaned) <= limit:
         return cleaned
@@ -157,6 +240,19 @@ def _normalize_chunk_text(text: str, limit: int = 1200) -> str:
 
 
 def _build_retrieved_summary(docs) -> list[dict]:
+    """
+    Build a structured summary of retrieved documents.
+
+    Parameters
+    ----------
+    docs : list
+        Retrieved document objects.
+
+    Returns
+    -------
+    list[dict]
+        Serializable summary records for logging and UI display.
+    """
     retrieved_summary = []
     for idx, d in enumerate(docs, start=1):
         md = getattr(d, "metadata", {}) or {}
@@ -179,6 +275,25 @@ def _build_retrieved_summary(docs) -> list[dict]:
 
 
 def _log_retrieval(req: GenReq, request_id: str, k_used: int, retrieved_summary: list[dict]) -> None:
+    """
+    Record retrieval metadata in the chat log.
+
+    Parameters
+    ----------
+    req : GenReq
+        Original request payload.
+    request_id : str
+        Unique request identifier.
+    k_used : int
+        Effective retrieval depth used for the request.
+    retrieved_summary : list[dict]
+        Retrieved document summary records.
+
+    Returns
+    -------
+    None
+        This function appends a retrieval event to the log.
+    """
     append_chat_log({
         "event": "retrieval",
         "request_id": request_id,
@@ -191,6 +306,19 @@ def _log_retrieval(req: GenReq, request_id: str, k_used: int, retrieved_summary:
 
 
 def _get_llm_instance(selected_model: str):
+    """
+    Get or create a cached LLM instance for the requested model.
+
+    Parameters
+    ----------
+    selected_model : str
+        Model selection string from the request or configuration.
+
+    Returns
+    -------
+    tuple
+        Resolved model metadata and the cached LLM instance.
+    """
     model_details = resolve_model_selection(selected_model, strict=False)
 
     actual_model_name = str(model_details["actual_model_name"])
@@ -206,6 +334,19 @@ def _get_llm_instance(selected_model: str):
 
 
 def prepare_generation(req: GenReq) -> dict:
+    """
+    Prepare retrieval results and model state for answer generation.
+
+    Parameters
+    ----------
+    req : GenReq
+        Parsed generation request payload.
+
+    Returns
+    -------
+    dict
+        Prepared generation context used by downstream handlers.
+    """
     k_used = req.k or 30
     selected_dbs = get_dbs_for_context_source(req.context_source)
     if not selected_dbs:
@@ -248,6 +389,21 @@ def prepare_generation(req: GenReq) -> dict:
 
 
 def generate_answer_text(prepared: dict, req: GenReq) -> str:
+    """
+    Generate the final answer text for a prepared request.
+
+    Parameters
+    ----------
+    prepared : dict
+        Prepared generation state from `prepare_generation`.
+    req : GenReq
+        Original request payload.
+
+    Returns
+    -------
+    str
+        Final answer text.
+    """
     if prepared["terminal_text"] is not None:
         return prepared["terminal_text"]
 
@@ -272,8 +428,19 @@ def generate_answer_text(prepared: dict, req: GenReq) -> str:
 
 def load_vectorstores_from_dir(vs_dir: str, embeddings):
     """
-    Best-effort: scan vs_dir for candidate vectorstore folders/files and try to load them.
-    Returns a list of loaded DB objects (LangChain-like or core's DB objects).
+    Load all supported vector stores found in a directory.
+
+    Parameters
+    ----------
+    vs_dir : str
+        Directory containing persisted vector stores.
+    embeddings : object
+        Embeddings provider used for loading FAISS stores.
+
+    Returns
+    -------
+    list
+        Loaded vector store objects.
     """
     vs_dir = os.path.abspath(os.path.expanduser(vs_dir))
     loaded = []
@@ -333,7 +500,19 @@ def load_vectorstores_from_dir(vs_dir: str, embeddings):
 
 def infer_db_source_type(db, candidate_path: str) -> str:
     """
-    Best-effort DB classification so we can keep PDF and CSV retrieval separate.
+    Infer whether a vector store contains PDF or CSV content.
+
+    Parameters
+    ----------
+    db : object
+        Loaded vector store instance.
+    candidate_path : str
+        Filesystem path associated with the store.
+
+    Returns
+    -------
+    str
+        Normalized source type, usually `"pdf"` or `"csv"`.
     """
     base = os.path.basename(candidate_path).lower()
     if "csv" in base:
@@ -352,11 +531,41 @@ def infer_db_source_type(db, candidate_path: str) -> str:
     return "pdf"
 
 def get_dbs_for_context_source(context_source: str):
+    """
+    Select the active vector store list for a context source.
+
+    Parameters
+    ----------
+    context_source : str
+        Context source identifier from the request.
+
+    Returns
+    -------
+    list
+        Vector stores corresponding to the requested source.
+    """
     if context_source == "csvs":
         return _CSV_DBS
     return _PDF_DBS
 
 def _replace_registered_db(target_list: list, new_db, source_path: str):
+    """
+    Replace an existing registered vector store with a new one by source path.
+
+    Parameters
+    ----------
+    target_list : list
+        Registry list to update.
+    new_db : object
+        Replacement vector store object.
+    source_path : str
+        Source path used for matching existing entries.
+
+    Returns
+    -------
+    None
+        This function updates the registry list in place.
+    """
     source_path = os.path.abspath(source_path)
     kept = []
     for existing_db in target_list:
@@ -367,6 +576,23 @@ def _replace_registered_db(target_list: list, new_db, source_path: str):
     target_list[:] = kept
 
 def register_vectorstore(db, source_type: str, source_path: str):
+    """
+    Register a vector store in the global store collections.
+
+    Parameters
+    ----------
+    db : object
+        Vector store instance to register.
+    source_type : str
+        Source type label, such as `"pdf"` or `"csv"`.
+    source_path : str
+        Filesystem path associated with the store.
+
+    Returns
+    -------
+    None
+        This function updates the module-level registries in place.
+    """
     global _DBS, _PDF_DBS, _CSV_DBS
 
     source_path = os.path.abspath(source_path)
@@ -380,6 +606,23 @@ def register_vectorstore(db, source_type: str, source_path: str):
         _replace_registered_db(_PDF_DBS, db, source_path)
 
 def _save_uploaded_file(upload: UploadFile, dest_dir: str, allowed_suffixes: set[str]) -> str:
+    """
+    Validate an uploaded file and compute its destination path.
+
+    Parameters
+    ----------
+    upload : UploadFile
+        Uploaded file object from FastAPI.
+    dest_dir : str
+        Destination directory where the file will be stored.
+    allowed_suffixes : set[str]
+        Allowed file extensions for the upload.
+
+    Returns
+    -------
+    str
+        Destination path for the uploaded file.
+    """
     filename = os.path.basename(upload.filename or "")
     if not filename:
         raise HTTPException(status_code=400, detail="Uploaded file must have a filename.")
@@ -393,6 +636,25 @@ def _save_uploaded_file(upload: UploadFile, dest_dir: str, allowed_suffixes: set
     return dest_path
 
 def build_csv_vectorstore(csv_path: str, vs_root: str, embeddings, reindex: bool = False):
+    """
+    Build or load a vector store for a CSV file.
+
+    Parameters
+    ----------
+    csv_path : str
+        Path to the CSV file to index.
+    vs_root : str
+        Root directory where vector stores are stored.
+    embeddings : object
+        Embeddings provider used for FAISS construction.
+    reindex : bool, optional
+        Whether to rebuild an existing vector store, by default False.
+
+    Returns
+    -------
+    tuple
+        Loaded or newly created vector store and its storage path.
+    """
     from langchain_community.vectorstores import FAISS as _FAISS
 
     os.makedirs(vs_root, exist_ok=True)
@@ -429,8 +691,21 @@ def build_csv_vectorstore(csv_path: str, vs_root: str, embeddings, reindex: bool
 
 def combined_retrieve(dbs, query: str, k_total: int):
     """
-    Query multiple DBs and merge results with global ranking across stores.
-    Returns up to k_total documents.
+    Query multiple vector stores and merge results into one ranked list.
+
+    Parameters
+    ----------
+    dbs : list
+        Vector stores to query.
+    query : str
+        Query text to search for.
+    k_total : int
+        Maximum number of merged documents to return.
+
+    Returns
+    -------
+    list
+        Deduplicated list of retrieved documents.
     """
     if not dbs:
         return []
@@ -498,6 +773,23 @@ async def upload_context(
     file: UploadFile = File(...),
     authorization: str | None = Header(None),
 ):
+    """
+    Upload and index a PDF or CSV file for later retrieval.
+
+    Parameters
+    ----------
+    context_source : Literal["pdfs", "csvs"], optional
+        Source bucket used for the uploaded file.
+    file : UploadFile
+        Uploaded file payload.
+    authorization : str | None, optional
+        Bearer authorization header.
+
+    Returns
+    -------
+    dict
+        Indexing result payload describing stored paths and counts.
+    """
     if authorization != f"Bearer {API_KEY}":
         raise HTTPException(status_code=401, detail="Unauthorized")
 
@@ -522,6 +814,19 @@ async def upload_context(
         f.write(file_bytes)
 
     def index_uploaded_file():
+        """
+        Index the uploaded file in a worker thread.
+
+        Parameters
+        ----------
+        None
+            Inputs are captured from the outer scope.
+
+        Returns
+        -------
+        dict
+            Result payload describing the indexed file.
+        """
         if context_source == "pdfs":
             db, store_dir = core.create_or_load_vector_store(dest_path, vs_root, _embeddings, reindex=True)
             register_vectorstore(db, "pdf", store_dir)
@@ -554,8 +859,25 @@ def init_services_from_pdfs(
     reindex: bool,
 ):
     """
-    Initialize embeddings, load/create vectorstores (one per saved VS or per PDF),
-    and initialize the configured LLM. Populates global _DBS and _llm.
+    Initialize embeddings, vector stores, and the configured LLM.
+
+    Parameters
+    ----------
+    pdfs_dir : str
+        Directory containing source PDF files.
+    vs_dir : str
+        Directory containing persisted PDF vector stores.
+    sent_model : str
+        Sentence-transformer model name.
+    selected_model : str | None
+        Initial LLM model selection.
+    reindex : bool
+        Whether to rebuild vector stores when possible.
+
+    Returns
+    -------
+    None
+        This function populates module-level caches and registries.
     """
     global _DBS, _PDF_DBS, _CSV_DBS, _llm, _embeddings
 
@@ -732,7 +1054,17 @@ def init_services_from_pdfs(
 @app.on_event("startup")
 def startup_event():
     """
-    Initialize inside FastAPI worker process. Uses ./pdfs by default and VS_DIR env or default.
+    Initialize the server inside the FastAPI worker process.
+
+    Parameters
+    ----------
+    None
+        Startup configuration is read from environment variables.
+
+    Returns
+    -------
+    None
+        This function initializes global state during application startup.
     """
     global _DBS, _llm
     if _DBS and _llm is not None:
@@ -769,6 +1101,27 @@ async def script_phase_gen_endpoint(
     n_steps: int = 101,
     authorization: str | None = Header(None),
 ):
+    """
+    Serve script-based phase diagram data through the API.
+
+    Parameters
+    ----------
+    A : str | None, optional
+        First material component.
+    B : str | None, optional
+        Second material component.
+    C : str | None, optional
+        Invariant material component.
+    n_steps : int, optional
+        Number of composition steps to evaluate.
+    authorization : str | None, optional
+        Bearer authorization header.
+
+    Returns
+    -------
+    JSONResponse
+        JSON payload containing Curie and Neel data.
+    """
     # Auth check (same pattern as /generate)
     if authorization != f"Bearer {API_KEY}":
         raise HTTPException(status_code=401, detail="Unauthorized")
@@ -793,6 +1146,19 @@ async def script_phase_gen_endpoint(
         raise HTTPException(status_code=500, detail=f"Internal error during computation: {ex}")
 
     def _sanitize_df_for_json(df):
+        """
+        Convert a dataframe into a JSON-safe records list.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            Dataframe to serialize.
+
+        Returns
+        -------
+        list
+            JSON-safe list of record dictionaries.
+        """
         if df is None or df.empty:
             return []
         df2 = df.copy()
@@ -817,6 +1183,19 @@ async def script_phase_gen_endpoint(
 # ----------------- CLI convenience -----------------
 
 def parse_args():
+    """
+    Parse command-line arguments for the server entry point.
+
+    Parameters
+    ----------
+    None
+        Arguments are read from the process command line.
+
+    Returns
+    -------
+    argparse.Namespace
+        Parsed command-line options.
+    """
     p = argparse.ArgumentParser(description="PDF Chat model server (folder-driven)")
     p.add_argument("--pdfs-dir", default=PDFS_DIR_DEFAULT, help="Directory containing PDFs (default ./pdfs)")
     p.add_argument("--vs-dir", default=VS_DIR_DEFAULT, help="Vectorstore directory")

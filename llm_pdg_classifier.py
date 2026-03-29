@@ -29,6 +29,21 @@ OUT_DIR = os.path.join("/app/storage", "materials_outputs")
 # Utilities
 # -------------------------
 def _safe_filename(s: str, maxlen: int = 180) -> str:
+    """
+    Convert a string into a filesystem-safe filename fragment.
+
+    Parameters
+    ----------
+    s : str
+        Source string to sanitize.
+    maxlen : int, optional
+        Maximum output length, by default 180.
+
+    Returns
+    -------
+    str
+        Sanitized filename fragment.
+    """
     base = re.sub(r"[^\w\-_\.]", "_", s)
     return base[:maxlen]
 
@@ -37,6 +52,19 @@ def _safe_filename(s: str, maxlen: int = 180) -> str:
 # Robust JSON extraction helper
 # -------------------------
 def _extract_json_from_text(text: str) -> str:
+    """
+    Extract the JSON-looking portion of a model response.
+
+    Parameters
+    ----------
+    text : str
+        Raw text returned by the model.
+
+    Returns
+    -------
+    str
+        Extracted JSON fragment or the original text.
+    """
     m = re.search(r"($begin:math:display$\.\*$end:math:display$)", text, flags=re.S)
     if m:
         return m.group(1)
@@ -52,10 +80,19 @@ def _extract_json_from_text(text: str) -> str:
 # -----------------------
 def invoke_llm(prompt: str, llm) -> str:
     """
-    Adapter wrapper. `llm` should be the LLM object used in the pipeline (e.g., OllamaLLM instance).
-    The original pipeline used the global `_llm` and called `_llm.invoke(prompt)` if available or `_llm(prompt)`.
-    Here we accept an llm argument and mirror that behaviour; if llm is None this function will raise.
-    Replace or adapt callers to pass the actual LLM instance (llm_phase_diagram_gen.init_services sets _llm).
+    Invoke the LLM using the adapter expected by the classifier.
+
+    Parameters
+    ----------
+    prompt : str
+        Prompt text to send to the language model.
+    llm : object
+        Language model instance implementing `invoke` or callable semantics.
+
+    Returns
+    -------
+    str
+        Raw model response text.
     """
     if llm is None:
         raise RuntimeError("LLM instance required for invoke_llm")
@@ -70,8 +107,17 @@ def invoke_llm(prompt: str, llm) -> str:
 
 def _reset_llm_cache(llm):
     """
-    Best-effort attempt to clear or reset LLM-side caches/state between batches.
-    Tries several common method names and swallows errors.
+    Reset model-side caches when the backend exposes reset hooks.
+
+    Parameters
+    ----------
+    llm : object
+        Language model instance whose state should be cleared.
+
+    Returns
+    -------
+    None
+        This function updates model state in place.
     """
     if llm is None:
         return
@@ -101,6 +147,19 @@ def _reset_llm_cache(llm):
 # Helper: safe numeric coercion
 # -----------------------
 def _to_float_or_nan(v):
+    """
+    Convert a value to float while falling back to NaN on failure.
+
+    Parameters
+    ----------
+    v : Any
+        Value to convert.
+
+    Returns
+    -------
+    float
+        Parsed float value or `nan` when conversion fails.
+    """
     try:
         return float(v)
     except Exception:
@@ -161,16 +220,43 @@ def classify_rows_with_llm(
     prompt_template: Optional[str] = None,
 ):
     """
-    Classify rows using the same logic & prompt as in llm_phase_diagram_gen.py (prompt_prefix preserved).
-    Writes/updates OUT_DIR/<safe_formula>_llm_log.csv with per-row logging.
+    Classify material rows with the configured LLM pipeline.
 
-    Parameters:
-      - formula: target formula (A(1-x)B(x) style)
-      - rows: list of dicts containing at least: {"id","Names","Type","Normalised Value"}
-      - llm_instance: the initialized LLM object (e.g., _llm from llm_phase_diagram_gen.init_services)
-      - batch_size, pause_batches, checkpoint_every, break_every_batches, break_seconds: preserved behaviour
-      - log_responses: when True, log rows to CSV (default True)
-      - per_row: if True, logging granularity is per-row (keeps original behaviour; not changing LLM calls)
+    Parameters
+    ----------
+    formula : str
+        Target formula used to guide classification.
+    rows : List[Dict[str, Any]]
+        Candidate rows to classify.
+    llm_instance : object
+        Language model instance used for evaluation.
+    batch_size : int, optional
+        Number of rows evaluated per batch, by default 3.
+    pause_batches : int, optional
+        Pause duration between batches, by default 0.
+    interactive : bool, optional
+        Whether to run interactively, by default False.
+    checkpoint_every : Optional[int], optional
+        Interval for optional checkpoints.
+    log_responses : bool, optional
+        Whether to store raw responses, by default True.
+    per_row : bool, optional
+        Whether to log each row separately, by default False.
+    break_every_batches : int, optional
+        Interval for long pauses, by default 5.
+    break_seconds : int, optional
+        Duration of long pauses in seconds, by default 10.
+    batch_timeout_seconds : int, optional
+        Timeout applied to each batch invocation, by default 60.
+    mini_sleep_seconds : float, optional
+        Short sleep between retries or batches, by default 1.0.
+    prompt_template : Optional[str], optional
+        Prompt template override.
+
+    Returns
+    -------
+    list
+        Parsed classification results for processed rows.
     """
     print(f"[llm_pdg_classifier] classify_rows_with_llm called for formula={formula!r}; total rows={len(rows)}; llm_instance is None? {llm_instance is None}")
     # prepare destinations & filename

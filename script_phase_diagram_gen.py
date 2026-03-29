@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+"""
+Script-based phase diagram generation utilities for non-LLM workflows.
+"""
+
 # script_phase_diagram_gen.py
 # Modified code from Carlos
 import os
@@ -13,10 +17,21 @@ import matplotlib.pyplot as plt
 
 def fetchtemps(Mat, DF, n_steps=101):
     """
-    - Mat: list/tuple of 3 strings e.g. ["La", "Sr", "MnO3"]
-    - DF: pandas DataFrame already loaded from CSV
-    - n_steps: number of x steps (default 101)
-    Returns: (NDF, CDF) pandas DataFrames with columns ["x","T","Name"]
+    Collect Curie and Neel transition points for a ternary material family.
+
+    Parameters
+    ----------
+    Mat : list | tuple
+        Three-part material specification such as `["La", "Sr", "MnO3"]`.
+    DF : pandas.DataFrame
+        Source dataframe containing transition records.
+    n_steps : int, optional
+        Number of composition steps to sample, by default 101.
+
+    Returns
+    -------
+    tuple
+        Pair of Neel and Curie dataframes with plotting columns.
     """
     # Lists to store the retrieved data
     XNT = []; NT = []
@@ -142,6 +157,19 @@ def fetchtemps(Mat, DF, n_steps=101):
     
     # Parse / clean numeric strings (best-effort; keep behaviour similar to original)
     def _parse_list_to_floats(lst):
+        """
+        Convert raw transition value strings into floats.
+
+        Parameters
+        ----------
+        lst : list
+            Raw list of values extracted from the source dataframe.
+
+        Returns
+        -------
+        list
+            Best-effort list of parsed float values.
+        """
         try:
             out = [str(t).strip() for t in lst]
             
@@ -194,13 +222,23 @@ def fetchtemps(Mat, DF, n_steps=101):
 
 def generate_phase_diagram(materials, csv_path=None, n_steps=101, save_path=None):
     """
-    Compute Neel/Curie averages from CSV and return PNG bytes.
-    - materials: list/tuple of three strings, e.g. ["La","Sr","MnO3"]
-    - csv_path: optional path to phase_transitions.csv (default: ./phase_transitions.csv)
-    - n_steps: number of composition steps (default 101)
-    - save_path: optional filepath to save the PNG (if provided)
-    Returns: tuple (png_bytes, saved_path_or_None)
-    Raises ValueError on missing/no-data or FileNotFoundError on missing CSV.
+    Generate raw phase-diagram data for a material triplet.
+
+    Parameters
+    ----------
+    materials : list | tuple
+        Three-part material specification such as `["La", "Sr", "MnO3"]`.
+    csv_path : str | None, optional
+        Path to the CSV file containing transition data.
+    n_steps : int, optional
+        Number of sampled composition steps, by default 101.
+    save_path : str | None, optional
+        Unused legacy parameter preserved for API compatibility.
+
+    Returns
+    -------
+    tuple
+        Pair of Neel and Curie dataframes.
     """
     
     #------------------------------- Errors -----------------------------------

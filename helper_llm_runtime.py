@@ -1,3 +1,7 @@
+"""
+Runtime helpers for selecting models and constructing LLM backends.
+"""
+
 from __future__ import annotations
 
 import os
@@ -40,6 +44,19 @@ MODEL_SPECS: dict[str, dict[str, str]] = {
 
 
 def get_active_pipeline() -> str:
+    """
+    Resolve the active LLM backend pipeline from environment configuration.
+
+    Parameters
+    ----------
+    None
+        This function reads configuration from environment variables.
+
+    Returns
+    -------
+    str
+        Active pipeline identifier such as `"hf"` or `"ollama"`.
+    """
     pipeline = os.environ.get("WHICH_PIPELINE", PIPELINE_HF).strip().lower()
     if pipeline not in SUPPORTED_PIPELINES:
         print(f"[helper_llm_runtime] Unsupported WHICH_PIPELINE={pipeline!r}; falling back to '{PIPELINE_HF}'.")
@@ -48,14 +65,55 @@ def get_active_pipeline() -> str:
 
 
 def get_model_options() -> dict[str, str]:
+    """
+    Build the frontend-friendly mapping of model labels to model keys.
+
+    Parameters
+    ----------
+    None
+        This function uses the module-level model specification table.
+
+    Returns
+    -------
+    dict[str, str]
+        Mapping from display labels to internal model keys.
+    """
     return {spec["label"]: model_key for model_key, spec in MODEL_SPECS.items()}
 
 
 def get_model_label(model_key: str) -> str:
+    """
+    Return the display label for a model key.
+
+    Parameters
+    ----------
+    model_key : str
+        Internal model key to resolve.
+
+    Returns
+    -------
+    str
+        Human-readable label for the model.
+    """
     return MODEL_SPECS[model_key]["label"]
 
 
 def get_pipeline_model_name(model_key: str, pipeline: str | None = None) -> str:
+    """
+    Resolve the concrete model name for a given key and pipeline.
+
+    Parameters
+    ----------
+    model_key : str
+        Internal model key to resolve.
+    pipeline : str | None, optional
+        Pipeline name to use, by default the active pipeline.
+
+    Returns
+    -------
+    str
+        Concrete model identifier for the selected backend.
+    """
     selected_pipeline = pipeline or get_active_pipeline()
     if model_key not in MODEL_SPECS:
         raise KeyError(f"Unknown model key: {model_key}")
@@ -63,6 +121,21 @@ def get_pipeline_model_name(model_key: str, pipeline: str | None = None) -> str:
 
 
 def get_default_model_key(configured_model: str | None = None, pipeline: str | None = None) -> str:
+    """
+    Determine the default model key for the current runtime configuration.
+
+    Parameters
+    ----------
+    configured_model : str | None, optional
+        Explicit model selection to resolve, by default None.
+    pipeline : str | None, optional
+        Pipeline to resolve against, by default the active pipeline.
+
+    Returns
+    -------
+    str
+        Default model key to use.
+    """
     if configured_model:
         resolved = resolve_model_selection(configured_model, pipeline=pipeline, strict=False)
     else:
@@ -80,6 +153,25 @@ def get_configured_default_model(
     fallback_key: str = DEFAULT_MODEL_KEY,
     pipeline: str | None = None,
 ) -> dict[str, str | None]:
+    """
+    Resolve the configured default model details for a pipeline.
+
+    Parameters
+    ----------
+    hf_env_vars : tuple[str, ...], optional
+        Environment variables checked for Hugging Face configuration.
+    ollama_env_vars : tuple[str, ...], optional
+        Environment variables checked for Ollama configuration.
+    fallback_key : str, optional
+        Model key used when no environment override is present.
+    pipeline : str | None, optional
+        Pipeline to resolve against, by default the active pipeline.
+
+    Returns
+    -------
+    dict[str, str | None]
+        Resolved model metadata dictionary.
+    """
     selected_pipeline = pipeline or get_active_pipeline()
     env_vars = hf_env_vars if selected_pipeline == PIPELINE_HF else ollama_env_vars
 
@@ -97,6 +189,23 @@ def resolve_model_selection(
     pipeline: str | None = None,
     strict: bool = True,
 ) -> dict[str, str | None]:
+    """
+    Resolve a model selection string into normalized model metadata.
+
+    Parameters
+    ----------
+    selection : str | None
+        Model key, model name, or label-like string to resolve.
+    pipeline : str | None, optional
+        Pipeline to resolve against, by default the active pipeline.
+    strict : bool, optional
+        Whether to raise on unknown values, by default True.
+
+    Returns
+    -------
+    dict[str, str | None]
+        Normalized model metadata dictionary.
+    """
     selected_pipeline = pipeline or get_active_pipeline()
     chosen = (selection or "").strip()
 
@@ -134,6 +243,19 @@ def resolve_model_selection(
 
 
 def _import_ollama_llm():
+    """
+    Import the Ollama LLM class with compatibility across package layouts.
+
+    Parameters
+    ----------
+    None
+        This function performs an import lookup only.
+
+    Returns
+    -------
+    type
+        Ollama LLM class implementation.
+    """
     try:
         from langchain_ollama import OllamaLLM
         return OllamaLLM
@@ -143,6 +265,19 @@ def _import_ollama_llm():
 
 
 def get_ollama_base_url() -> str | None:
+    """
+    Resolve the configured Ollama base URL from environment variables.
+
+    Parameters
+    ----------
+    None
+        This function reads configuration from environment variables.
+
+    Returns
+    -------
+    str | None
+        Normalized Ollama base URL or `None` when unset.
+    """
     raw_value = os.environ.get("OLLAMA_BASE_URL") or os.environ.get("OLLAMA_HOST")
     if not raw_value:
         return None
@@ -165,6 +300,29 @@ def build_llm(
     fallback_key: str = DEFAULT_MODEL_KEY,
     **kwargs: Any,
 ):
+    """
+    Build an LLM instance for the selected pipeline and model.
+
+    Parameters
+    ----------
+    selection : str | None, optional
+        Requested model selection, by default None.
+    pipeline : str | None, optional
+        Pipeline to build for, by default the active pipeline.
+    hf_env_vars : tuple[str, ...], optional
+        Environment variables checked for Hugging Face model selection.
+    ollama_env_vars : tuple[str, ...], optional
+        Environment variables checked for Ollama model selection.
+    fallback_key : str, optional
+        Default model key when no explicit selection is provided.
+    **kwargs : Any
+        Additional backend-specific keyword arguments.
+
+    Returns
+    -------
+    tuple
+        Pair of resolved model metadata and the instantiated LLM object.
+    """
     selected_pipeline = pipeline or get_active_pipeline()
     if selection:
         model_details = resolve_model_selection(selection, pipeline=selected_pipeline, strict=False)

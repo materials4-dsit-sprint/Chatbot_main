@@ -62,6 +62,19 @@ login_view = pn.Column(
 
 
 def authenticate(event):
+    """
+    Authenticate the user and swap the login view for the main tabs.
+
+    Parameters
+    ----------
+    event : object
+        Panel button click event.
+
+    Returns
+    -------
+    None
+        This function updates the visible layout in place.
+    """
     user = username_input.value
     pwd = password_input.value
 
@@ -82,6 +95,19 @@ REQUEST_TIMEOUT = float(os.environ.get("REQUEST_TIMEOUT", "360"))
 # Chats
 # --------------------
 def _build_chat_payload(message: str) -> dict:
+    """
+    Build the request payload for chatbot generation calls.
+
+    Parameters
+    ----------
+    message : str
+        User message to send to the backend.
+
+    Returns
+    -------
+    dict
+        Request payload containing chat and retrieval options.
+    """
     return {
         "question": message,
         "k": int(k_slider.value),
@@ -92,6 +118,19 @@ def _build_chat_payload(message: str) -> dict:
 
 
 def _chat_headers() -> dict:
+    """
+    Build the authorization headers for chat requests.
+
+    Parameters
+    ----------
+    None
+        Header values are derived from module configuration.
+
+    Returns
+    -------
+    dict
+        HTTP headers for authenticated backend calls.
+    """
     return {
         "Authorization": f"Bearer {API_KEY}",
         "Content-Type": "application/json",
@@ -99,6 +138,19 @@ def _chat_headers() -> dict:
 
 
 def _sync_chat_request(payload: dict) -> str:
+    """
+    Execute a synchronous non-streaming chat request.
+
+    Parameters
+    ----------
+    payload : dict
+        Request payload sent to the backend.
+
+    Returns
+    -------
+    str
+        Response text or an error message.
+    """
     headers = _chat_headers()
     try:
         response = requests.post(
@@ -117,6 +169,19 @@ def _sync_chat_request(payload: dict) -> str:
 
 
 def _format_page_label(page) -> str:
+    """
+    Convert a zero-based page value into a display label.
+
+    Parameters
+    ----------
+    page : Any
+        Raw page value returned by the backend.
+
+    Returns
+    -------
+    str
+        Human-readable page label.
+    """
     if isinstance(page, int):
         return str(page + 1)
     if isinstance(page, str) and page.isdigit():
@@ -127,6 +192,19 @@ def _format_page_label(page) -> str:
 
 
 def _format_retrieved_chunks_message(retrieved: list[dict]) -> str:
+    """
+    Format retrieved document metadata into a markdown message.
+
+    Parameters
+    ----------
+    retrieved : list[dict]
+        Retrieved document summaries from the backend.
+
+    Returns
+    -------
+    str
+        Markdown string describing retrieved chunks.
+    """
     if not retrieved:
         return ""
 
@@ -152,6 +230,19 @@ def _format_retrieved_chunks_message(retrieved: list[dict]) -> str:
 
 
 def _collect_pdf_chat_stream(payload: dict) -> tuple[str | None, str]:
+    """
+    Collect retrieval and answer events from the streaming chat endpoint.
+
+    Parameters
+    ----------
+    payload : dict
+        Request payload sent to the streaming endpoint.
+
+    Returns
+    -------
+    tuple[str | None, str]
+        Optional retrieval message and final answer or error text.
+    """
     headers = _chat_headers()
     try:
         with requests.post(
@@ -198,6 +289,23 @@ def _collect_pdf_chat_stream(payload: dict) -> tuple[str | None, str]:
 
 
 async def chat_callback(message, user, chat):
+    """
+    Handle chat interactions from the Panel chat interface.
+
+    Parameters
+    ----------
+    message : str
+        User message submitted from the UI.
+    user : str
+        User identifier supplied by Panel.
+    chat : object
+        Chat interface instance used for sending follow-up messages.
+
+    Returns
+    -------
+    str
+        Final answer text to render in the chat UI.
+    """
     payload = _build_chat_payload(message)
     if payload["context_source"] == "pdfs":
         retrieval_message, answer_text = await asyncio.to_thread(_collect_pdf_chat_stream, payload)
@@ -209,6 +317,23 @@ async def chat_callback(message, user, chat):
 
 
 def upload_context_file(file_widget, context_source: str, status_pane):
+    """
+    Upload a PDF or CSV file and trigger backend indexing.
+
+    Parameters
+    ----------
+    file_widget : object
+        Panel file input widget.
+    context_source : str
+        Context source identifier, either `"pdfs"` or `"csvs"`.
+    status_pane : object
+        Panel pane used to display upload status.
+
+    Returns
+    -------
+    None
+        This function updates the status pane in place.
+    """
     filename = None
     file_value = None
 
@@ -420,10 +545,21 @@ center_selector = pn.widgets.RadioButtonGroup(
 # -----------------------
 def build_plot(plot_pane, control_plot_type, control_center_selector):
     """
-    Build the plot from _cached_NDF (Neel) and _cached_CDF (Curie) and set plot_pane.object.
-    plot_pane : pn.pane.HoloViews instance
-    control_plot_type : widget (RadioButtonGroup)
-    control_center_selector : widget (Select)
+    Build the current phase diagram plot from cached dataframes.
+
+    Parameters
+    ----------
+    plot_pane : object
+        Panel HoloViews pane receiving the rendered plot.
+    control_plot_type : object
+        Widget controlling scatter versus errorbar mode.
+    control_center_selector : object
+        Widget controlling mean versus median aggregation.
+
+    Returns
+    -------
+    None
+        This function updates the plot pane in place.
     """
     global _cached_NDF, _cached_CDF
 
@@ -472,6 +608,21 @@ def build_plot(plot_pane, control_plot_type, control_center_selector):
         import holoviews as _hv  # local alias
 
         def make_agg(df, label):
+            """
+            Build aggregated errorbar plot elements for one transition type.
+
+            Parameters
+            ----------
+            df : pandas.DataFrame
+                Source dataframe for a transition family.
+            label : str
+                Plot label for the generated elements.
+
+            Returns
+            -------
+            tuple
+                Error bar element and overlay element for the aggregated series.
+            """
             if df is None or df.empty:
                 return None, None
             # groupby x to compute center and std
@@ -600,7 +751,17 @@ prompt_template_input = pn.widgets.TextAreaInput(
 
 def on_llm_fetch(event=None):
     """
-    Fetch JSON from /llm_phase_gen, cache results and build plot.
+    Fetch LLM-based phase diagram data and refresh the plot.
+
+    Parameters
+    ----------
+    event : object, optional
+        Panel button click event.
+
+    Returns
+    -------
+    None
+        This function updates cached data and the plot pane in place.
     """
     global _cached_NDF, _cached_CDF
 
@@ -639,6 +800,19 @@ def on_llm_fetch(event=None):
 
 
 def _notify_error(message):
+    """
+    Show an error notification using Panel state when available.
+
+    Parameters
+    ----------
+    message : str
+        Error message to display.
+
+    Returns
+    -------
+    object | None
+        Notification handle when supported, otherwise `None`.
+    """
     if getattr(pn.state, "notifications", None) is not None:
         return pn.state.notifications.error(message)
     print("ERROR:", message)
@@ -646,6 +820,19 @@ def _notify_error(message):
 
 
 def _notify_info(message):
+    """
+    Show an informational notification using Panel state when available.
+
+    Parameters
+    ----------
+    message : str
+        Informational message to display.
+
+    Returns
+    -------
+    object | None
+        Notification handle when supported, otherwise `None`.
+    """
     if getattr(pn.state, "notifications", None) is not None:
         return pn.state.notifications.info(message)
     print("INFO:", message)
@@ -653,6 +840,19 @@ def _notify_info(message):
 
 
 def _get_phase_materials():
+    """
+    Read the current material inputs from the phase diagram form.
+
+    Parameters
+    ----------
+    None
+        Values are taken from the current widget state.
+
+    Returns
+    -------
+    tuple
+        Three stripped material strings for A, B, and C.
+    """
     return (
         phase_mat_a.value.strip(),
         phase_mat_b.value.strip(),
@@ -661,6 +861,19 @@ def _get_phase_materials():
 
 
 def _show_phase_meta(data):
+    """
+    Surface phase-generation metadata to the user as notifications.
+
+    Parameters
+    ----------
+    data : dict
+        Response payload containing a `"meta"` section.
+
+    Returns
+    -------
+    None
+        This function emits notifications when metadata is present.
+    """
     meta = data.get("meta", {})
     info = []
     if meta.get("log_path"):
@@ -673,7 +886,17 @@ def _show_phase_meta(data):
 
 def fetch_script_phase_data(event=None):
     """
-    Script fetch: call /script_phase_gen which returns JSON (neel + curie).
+    Fetch script-based phase diagram data and refresh the plot.
+
+    Parameters
+    ----------
+    event : object, optional
+        Panel button click event.
+
+    Returns
+    -------
+    None
+        This function updates cached data and the plot pane in place.
     """
     global _cached_NDF, _cached_CDF
 
@@ -705,6 +928,19 @@ def fetch_script_phase_data(event=None):
 
 
 def on_phase_generate(event=None):
+    """
+    Dispatch phase generation to the selected backend pipeline.
+
+    Parameters
+    ----------
+    event : object, optional
+        Panel button click event.
+
+    Returns
+    -------
+    None
+        This function delegates to the appropriate fetch handler.
+    """
     if phase_mode_selector.value == "script":
         return fetch_script_phase_data(event)
     return on_llm_fetch(event)
@@ -721,6 +957,19 @@ llm_controls = pn.Column(
 
 
 def _sync_phase_mode(event=None):
+    """
+    Toggle visibility of LLM-only controls based on the selected mode.
+
+    Parameters
+    ----------
+    event : object, optional
+        Widget change event.
+
+    Returns
+    -------
+    None
+        This function updates UI visibility in place.
+    """
     llm_controls.visible = phase_mode_selector.value == "llm"
 
 
