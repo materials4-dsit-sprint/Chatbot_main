@@ -392,6 +392,8 @@ chat_panel = pn.Row(
 # -----------------------
 _cached_NDF = None
 _cached_CDF = None
+PLOT_WIDTH = 900
+PLOT_HEIGHT = 450
 
 # -----------------------
 # Shared widgets (plot control)
@@ -509,7 +511,13 @@ def build_plot(plot_pane, control_plot_type, control_center_selector):
 
     # major grid only
     if final is not None:
-        final = final.opts(show_grid=True)
+        final = final.opts(
+            show_grid=True,
+            width=PLOT_WIDTH,
+            height=PLOT_HEIGHT,
+            responsive=False,
+            framewise=False,
+        )
         plot_pane.object = final
     else:
         plot_pane.object = None
@@ -547,7 +555,7 @@ phase_log_mode = pn.widgets.RadioButtonGroup(
 )
 
 phase_gen_button = pn.widgets.Button(name="Generate", button_type="primary")
-phase_plot_pane = pn.pane.HoloViews(height=450, width=900)
+phase_plot_pane = pn.pane.HoloViews(height=PLOT_HEIGHT, width=PLOT_WIDTH)
 
 
 DEFAULT_PROMPT_TEMPLATE = """You are a careful materials scientist and a strict JSON-output assistant.
