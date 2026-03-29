@@ -15,9 +15,11 @@ except Exception as e:
         "Install with: pip install sentence-transformers"
     ) from e
 
+STORAGE_DIR = os.getenv("STORAGE_DIR", "./storage")
+
 
 # ---- HARD-CODED CACHE DIRECTORY ----
-HF_CACHE_DIR = os.path.join("/app/storage", "hf_cache")
+HF_CACHE_DIR = os.path.join(STORAGE_DIR, "hf_cache")
 os.makedirs(HF_CACHE_DIR, exist_ok=True)
 
 

@@ -14,6 +14,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+STORAGE_DIR = os.getenv("STORAGE_DIR", "./storage")
+
 
 def fetchtemps(Mat, DF, n_steps=101):
     """
@@ -207,7 +209,7 @@ def fetchtemps(Mat, DF, n_steps=101):
     # print(len(CDF["Name"]))
     
     # ADding log
-    LOG_DIR = os.path.join("/app/storage", "materials_nollm_log",)    
+    LOG_DIR = os.path.join(STORAGE_DIR, "materials_nollm_log",)    
     os.makedirs(LOG_DIR, exist_ok=True)
     filename = f"{Mat[0]}_(1-x)_{Mat[1]}_(x)_{Mat[2]}.csv"
     LOG_PATH = os.path.join(LOG_DIR, filename)

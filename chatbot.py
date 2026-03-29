@@ -17,8 +17,10 @@ from cb_embeddings import get_embeddings_provider
 from helper_llm_runtime import build_llm, get_active_pipeline, get_ollama_base_url
 import cb_core as core
 
-PDFS_DIR_DEFAULT = os.path.join("/app/storage", "pdfs")
-VS_DIR_DEFAULT = os.path.join("/app/storage", "pdf_vectorstores")
+STORAGE_DIR = os.getenv("STORAGE_DIR", "./storage")
+
+PDFS_DIR_DEFAULT = os.path.join(STORAGE_DIR, "pdfs")
+VS_DIR_DEFAULT = os.path.join(STORAGE_DIR, "pdf_vectorstores")
 DEFAULT_SENT_MODEL = "all-MiniLM-L6-v2"
 
 """You are an assistant that answers questions using the retrieved context.

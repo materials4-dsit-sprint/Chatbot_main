@@ -24,6 +24,8 @@ from helper_llm_runtime import get_model_options, get_default_model_key
 pn.config.sizing_mode = "stretch_width"
 pn.extension("filedropper")
 
+STORAGE_DIR = os.getenv("STORAGE_DIR", "./storage")
+
 
 # --------------------
 # Configuration
@@ -1004,7 +1006,7 @@ tabs = pn.Tabs(("Chat", chat_panel),
 
 template = pn.template.FastListTemplate(
     title="Materials 4.0 ChatBot",
-    logo="/app/storage/logos/hri_cam.png" if os.path.exists("/app/storage/logos/hri_cam.png") else None,
+    logo=os.path.join(STORAGE_DIR, "logos", "hri_cam.png") if os.path.exists(os.path.join(STORAGE_DIR, "logos", "hri_cam.png")) else None,
     header_color="black",
     main=[],
     accent="#00BDB6",

@@ -27,9 +27,11 @@ router = APIRouter()
 
 from llm_pdg_classifier import classify_rows_with_llm, OUT_DIR, _safe_filename
 
-DEFAULT_MATERIALS_CSV = os.path.join("/app/storage", "materials", "_new_curie_neel_database_processed_cleaned.csv",)
-RAW_CSV = os.path.join("/app/storage", "materials", "materials_cleaned_shortened_names_as_they_are_FULL.csv",)
-VS_BASE_DIR = os.path.join("/app/storage", "csv_vectorstores",)
+STORAGE_DIR = os.getenv("STORAGE_DIR", "./storage")
+
+DEFAULT_MATERIALS_CSV = os.path.join(STORAGE_DIR, "materials", "_new_curie_neel_database_processed_cleaned.csv",)
+RAW_CSV = os.path.join(STORAGE_DIR, "materials", "materials_cleaned_shortened_names_as_they_are_FULL.csv",)
+VS_BASE_DIR = os.path.join(STORAGE_DIR, "csv_vectorstores",)
 
 # Globals (lazy init)
 _embeddings = None

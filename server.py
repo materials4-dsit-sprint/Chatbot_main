@@ -29,11 +29,13 @@ import json
 from fastapi.responses import JSONResponse, StreamingResponse
 from helper_llm_runtime import build_llm, get_active_pipeline, get_configured_default_model, get_ollama_base_url, resolve_model_selection
 
+STORAGE_DIR = os.getenv("STORAGE_DIR", "./storage")
+
 # Defaults
-PDFS_DIR_DEFAULT = os.path.join("/app/storage", "pdfs")
-VS_DIR_DEFAULT = os.path.join("/app/storage", "pdf_vectorstores")
-MATERIALS_DIR_DEFAULT = os.path.join("/app/storage", "materials")
-CSV_VS_DIR_DEFAULT = os.path.join("/app/storage", "csv_vectorstores")
+PDFS_DIR_DEFAULT = os.path.join(STORAGE_DIR, "pdfs")
+VS_DIR_DEFAULT = os.path.join(STORAGE_DIR, "pdf_vectorstores")
+MATERIALS_DIR_DEFAULT = os.path.join(STORAGE_DIR, "materials")
+CSV_VS_DIR_DEFAULT = os.path.join(STORAGE_DIR, "csv_vectorstores")
 DEFAULT_SENT_MODEL = "all-MiniLM-L6-v2"
 app = FastAPI()
 
@@ -63,7 +65,7 @@ _LLM_CACHE: dict[str, object] = {}
 
 #------------------------- simple JSONL logger ------------------------------
 import uuid, datetime
-LOG_PATH = os.path.join("/app/storage", "logs", "chat_logs.jsonl")
+LOG_PATH = os.path.join(STORAGE_DIR, "logs", "chat_logs.jsonl")
 os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
 
 def append_chat_log(entry: dict):
@@ -890,7 +892,7 @@ def init_services_from_pdfs(
         # If no PDFs, check whether a CSV dataset exists and proceed in CSV-only mode
         csv_path_env = os.environ.get("MATERIALS_CSV", None)
         if not csv_path_env:
-            csv_path_env = os.path.join("/app/storage", "materials", "materials.csv")
+            csv_path_env = os.path.join(STORAGE_DIR, "materials", "materials.csv")
         else:
             csv_path_env = os.path.expanduser(csv_path_env)
     
@@ -954,7 +956,7 @@ def init_services_from_pdfs(
         if not uploaded:
             print("No PDFs were successfully uploaded.", file=sys.stderr)
             # If a CSV dataset exists, proceed in CSV-only mode; otherwise abort.
-            csv_path_env = os.environ.get("MATERIALS_CSV", os.path.join("/app/storage", "materials", "materials.csv"))
+            csv_path_env = os.environ.get("MATERIALS_CSV", os.path.join(STORAGE_DIR, "materials", "materials.csv"))
             csv_path_env = os.path.expanduser(csv_path_env)
             if not os.path.exists(csv_path_env):
                 print(f"No CSV found at {csv_path_env} and no PDFs uploaded. Aborting.", file=sys.stderr)
@@ -975,7 +977,7 @@ def init_services_from_pdfs(
         csv_path_env = os.environ.get("MATERIALS_CSV", None)
         # fallback path used by the script phase generator handler
         if not csv_path_env:
-            csv_path_env = os.environ.get("MATERIALS_CSV", os.path.join("/app/storage", "materials", "materials_cleaned_shortened_names_as_they_are_FULL.csv"))
+            csv_path_env = os.environ.get("MATERIALS_CSV", os.path.join(STORAGE_DIR, "materials", "materials_cleaned_shortened_names_as_they_are_FULL.csv"))
             csv_path_env = os.path.expanduser(csv_path_env)
 
         if os.path.exists(csv_path_env):
@@ -1037,7 +1039,7 @@ def init_services_from_pdfs(
 
     if not _DBS:
         # Allow CSV-only operation if a CSV dataset exists (it may be indexed below).
-        csv_path_env = os.environ.get("MATERIALS_CSV", os.path.join("/app/storage", "materials", "materials.csv"))
+        csv_path_env = os.environ.get("MATERIALS_CSV", os.path.join(STORAGE_DIR, "materials", "materials.csv"))
         csv_path_env = os.path.expanduser(csv_path_env)
         if os.path.exists(csv_path_env):
             print(f"No PDF vectorstores, but CSV found at {csv_path_env}. Continuing in CSV-only mode.", file=sys.stderr)
@@ -1129,7 +1131,7 @@ async def script_phase_gen_endpoint(
     if not (A and B and C):
         raise HTTPException(status_code=400, detail="A, B and C query parameters are required")
 
-    csv_path = os.path.join("/app/storage", "materials", "materials.csv")
+    csv_path = os.path.join(STORAGE_DIR, "materials", "materials.csv")
     if not os.path.exists(csv_path):
         raise HTTPException(status_code=500, detail=f"csv not found at {csv_path}")
 
