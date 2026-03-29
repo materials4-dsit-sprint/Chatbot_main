@@ -1,7 +1,7 @@
 """
-llm_classifier.py
+llm_pdg_classifier.py
 
-LLM classification pipeline (extracted from materials_phase_png.py).
+LLM classification pipeline for the LLM phase diagram generator.
 - Uses the exact prompt_prefix text and the same robust parsing logic as the original.
 - Implements batching, per-batch pause and periodic long break (break_every_batches).
 - Writes the authoritative LLM log CSV: OUT_DIR/<safe_formula>_llm_log.csv
@@ -9,7 +9,7 @@ LLM classification pipeline (extracted from materials_phase_png.py).
 
 Dependencies:
 - pandas, json, time, os, re
-- Expects OUT_DIR and _safe_filename to be provided by materials_phase_png (we import them).
+- Expects OUT_DIR and _safe_filename to be provided by llm_phase_diagram_gen (we import them).
 """
 
 from typing import List, Dict, Any, Optional
@@ -55,7 +55,7 @@ def invoke_llm(prompt: str, llm) -> str:
     Adapter wrapper. `llm` should be the LLM object used in the pipeline (e.g., OllamaLLM instance).
     The original pipeline used the global `_llm` and called `_llm.invoke(prompt)` if available or `_llm(prompt)`.
     Here we accept an llm argument and mirror that behaviour; if llm is None this function will raise.
-    Replace or adapt callers to pass the actual LLM instance (materials_phase_png.init_services sets _llm).
+    Replace or adapt callers to pass the actual LLM instance (llm_phase_diagram_gen.init_services sets _llm).
     """
     if llm is None:
         raise RuntimeError("LLM instance required for invoke_llm")
@@ -80,10 +80,10 @@ def _reset_llm_cache(llm):
         if callable(fn):
             try:
                 fn()
-                print(f"[llm_classifier] Called llm.{name}() to reset state")
+                print(f"[llm_pdg_classifier] Called llm.{name}() to reset state")
                 return
             except Exception as e:
-                print(f"[llm_classifier][WARN] llm.{name}() failed: {e}")
+                print(f"[llm_pdg_classifier][WARN] llm.{name}() failed: {e}")
     # last resort: if object has 'client' with reset-like methods, try that
     client = getattr(llm, "client", None)
     if client is not None:
@@ -92,10 +92,10 @@ def _reset_llm_cache(llm):
             if callable(fn):
                 try:
                     fn()
-                    print(f"[llm_classifier] Called llm.client.{name}() to reset state")
+                    print(f"[llm_pdg_classifier] Called llm.client.{name}() to reset state")
                     return
                 except Exception as e:
-                    print(f"[llm_classifier][WARN] llm.client.{name}() failed: {e}")
+                    print(f"[llm_pdg_classifier][WARN] llm.client.{name}() failed: {e}")
                     
 # -----------------------
 # Helper: safe numeric coercion
@@ -161,18 +161,18 @@ def classify_rows_with_llm(
     prompt_template: Optional[str] = None,
 ):
     """
-    Classify rows using the same logic & prompt as in materials_phase_png.py (prompt_prefix preserved).
+    Classify rows using the same logic & prompt as in llm_phase_diagram_gen.py (prompt_prefix preserved).
     Writes/updates OUT_DIR/<safe_formula>_llm_log.csv with per-row logging.
 
     Parameters:
       - formula: target formula (A(1-x)B(x) style)
       - rows: list of dicts containing at least: {"id","Names","Type","Normalised Value"}
-      - llm_instance: the initialized LLM object (e.g., _llm from materials_phase_png.init_services)
+      - llm_instance: the initialized LLM object (e.g., _llm from llm_phase_diagram_gen.init_services)
       - batch_size, pause_batches, checkpoint_every, break_every_batches, break_seconds: preserved behaviour
       - log_responses: when True, log rows to CSV (default True)
       - per_row: if True, logging granularity is per-row (keeps original behaviour; not changing LLM calls)
     """
-    print(f"[llm_classifier] classify_rows_with_llm called for formula={formula!r}; total rows={len(rows)}; llm_instance is None? {llm_instance is None}")
+    print(f"[llm_pdg_classifier] classify_rows_with_llm called for formula={formula!r}; total rows={len(rows)}; llm_instance is None? {llm_instance is None}")
     # prepare destinations & filename
     safe = _safe_filename(formula)
     os.makedirs(OUT_DIR, exist_ok=True)
@@ -180,7 +180,7 @@ def classify_rows_with_llm(
 
     # Build element mapping snippet used in the original prompt (A,B,C... mapping)
     try:
-        from materials_phase_png import _extract_element_tokens, _map_tokens_to_letters  # type: ignore
+        from llm_phase_diagram_gen import _extract_element_tokens, _map_tokens_to_letters  # type: ignore
         tokens = _extract_element_tokens(formula)
         mapping = _map_tokens_to_letters(tokens) if tokens else {}
         elements_txt = ", ".join(f"{k}={v}" for k, v in mapping.items()) if mapping else "none detected"
@@ -242,20 +242,20 @@ def classify_rows_with_llm(
     if total == 0:
         return []
 
-        # --- Ensure we have an LLM instance: try fallback from materials_phase module ---
+        # --- Ensure we have an LLM instance: try fallback from llm_phase_diagram_gen module ---
     if llm_instance is None:
         try:
-            # prefer the _llm created by materials_phase.init_services()
-            from materials_phase import _llm as _fallback_llm  # type: ignore
+            # prefer the _llm created by llm_phase_diagram_gen.init_services()
+            from llm_phase_diagram_gen import _llm as _fallback_llm  # type: ignore
             if _fallback_llm is not None:
                 llm_instance = _fallback_llm
-                print("[llm_classifier] Using fallback _llm imported from materials_phase")
+                print("[llm_pdg_classifier] Using fallback _llm imported from llm_phase_diagram_gen")
         except Exception:
             pass
 
     # If still None, raise (fail fast so we don't silently produce empty results)
     if llm_instance is None:
-        raise RuntimeError("classify_rows_with_llm: llm_instance is None. Provide an llm_instance (e.g., classifier_options['llm_instance']=materials_phase._llm).")
+        raise RuntimeError("classify_rows_with_llm: llm_instance is None. Provide an llm_instance (e.g., classifier_options['llm_instance']=llm_phase_diagram_gen._llm).")
 
     # Prepare CSV header & writer (append mode: if file exists we append; the original behaviour appended)
     write_header = not os.path.exists(log_fn)
@@ -301,21 +301,21 @@ def classify_rows_with_llm(
             # call LLM via adapter but enforce a timeout so a stuck request doesn't hang the whole run
             raw = None
             try:
-                print(f"[llm_classifier] About to invoke LLM for batch {batch_count} (rows {len(batch)})")
+                print(f"[llm_pdg_classifier] About to invoke LLM for batch {batch_count} (rows {len(batch)})")
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
                     fut = ex.submit(invoke_llm, prompt, llm_instance)
                     try:
                         t0 = time.time()
                         raw = fut.result(timeout=batch_timeout_seconds)
                         t1 = time.time()
-                        print(f"[llm_classifier] LLM invoked for batch {batch_count}; duration={t1-t0:.3f}s; response_len={len(str(raw)) if raw is not None else 0}")
+                        print(f"[llm_pdg_classifier] LLM invoked for batch {batch_count}; duration={t1-t0:.3f}s; response_len={len(str(raw)) if raw is not None else 0}")
                     except concurrent.futures.TimeoutError:
                         # Timeout: cancel and mark batch as failed (do not block)
                         fut.cancel()
-                        print(f"[llm_classifier][WARN] LLM batch {batch_count} timed out after {batch_timeout_seconds}s; marking rows excluded and continuing")
+                        print(f"[llm_pdg_classifier][WARN] LLM batch {batch_count} timed out after {batch_timeout_seconds}s; marking rows excluded and continuing")
                         raw = None
             except Exception as e:
-                print(f"[llm_classifier][ERROR] Exception while invoking LLM for batch {batch_count}: {e}")
+                print(f"[llm_pdg_classifier][ERROR] Exception while invoking LLM for batch {batch_count}: {e}")
                 raw = None
 
             # if raw is None treat as LLM failure and mark rows as excluded (same as earlier error path)

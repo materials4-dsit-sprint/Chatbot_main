@@ -38,8 +38,8 @@ DEFAULT_SENT_MODEL = "all-MiniLM-L6-v2"
 app = FastAPI()
 
 # import the router
-from materials_phase import router as materials_router
-app.include_router(materials_router, prefix="")
+from llm_phase_diagram_gen import router as llm_phase_gen_router
+app.include_router(llm_phase_gen_router, prefix="")
 
 
 class GenReq(BaseModel):
@@ -651,7 +651,7 @@ def init_services_from_pdfs(
     # === CSV dataset indexing (add CSV vectorstore to _DBS) ===
     try:
         csv_path_env = os.environ.get("MATERIALS_CSV", None)
-        # fallback path used by phase_gen handler
+        # fallback path used by the script phase generator handler
         if not csv_path_env:
             csv_path_env = os.environ.get("MATERIALS_CSV", os.path.join("/app/storage", "materials", "materials_cleaned_shortened_names_as_they_are_FULL.csv"))
             csv_path_env = os.path.expanduser(csv_path_env)
@@ -758,11 +758,11 @@ def startup_event():
     print("Initialization complete (startup handler).", file=sys.stderr)
 
 
-from phase_diagram_backend import generate_phase_diagram
+from script_phase_diagram_gen import generate_phase_diagram
 
 # --- Phase diagram generation endpoint (JSON for hvPlot) ---
-@app.post("/phase_gen")
-async def phase_gen(
+@app.post("/script_phase_gen")
+async def script_phase_gen_endpoint(
     A: str | None = None,
     B: str | None = None,
     C: str | None = None,

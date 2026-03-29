@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# phase_diagram_backend.py
+# script_phase_diagram_gen.py
 # Modified code from Carlos
 import os
 import io

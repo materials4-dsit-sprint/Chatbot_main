@@ -1,11 +1,11 @@
 """
-materials_phase.py
+llm_phase_diagram_gen.py
 
 Light orchestration module: produce JSON-safe Curie / Neel lists for frontend.
 
 Behavior:
-- Uses existing prefilter + ranking helpers from materials_phase_png.py
-- Calls llm_classifier.classify_rows_with_llm(...) to produce/update the LLM log
+- Uses existing prefilter + ranking helpers from the LLM phase diagram generator flow
+- Calls llm_pdg_classifier.classify_rows_with_llm(...) to produce/update the LLM log
 - Reads the authoritative LLM log (OUT_DIR/<safe>_llm_log.csv) and builds 'curie' and 'neel' lists
   containing dicts with fields x, T, Name (and preserves _id/DOI if present).
 - Returns a dict {'curie': [...], 'neel': [...], 'meta': {...}} ready to be returned via JSON.
@@ -25,7 +25,7 @@ from typing import List, Dict, Any, Optional
 from llm_runtime import build_llm, get_active_pipeline, get_configured_default_model, resolve_model_selection
 router = APIRouter()
 
-from llm_classifier import classify_rows_with_llm, OUT_DIR, _safe_filename
+from llm_pdg_classifier import classify_rows_with_llm, OUT_DIR, _safe_filename
 
 DEFAULT_MATERIALS_CSV = os.path.join("/app/storage", "materials", "_new_curie_neel_database_processed_cleaned.csv",)
 RAW_CSV = os.path.join("/app/storage", "materials", "materials_cleaned_shortened_names_as_they_are_FULL.csv",)
@@ -449,7 +449,7 @@ def build_material_phase_data(
     # if there are rows to classify, call the classifier
     classifier_options = classifier_options or {}
     if rows_for_llm:
-        # Ensure init_services was run so materials_phase._llm exists
+        # Ensure init_services was run so llm_phase_diagram_gen._llm exists
         try:
             init_services(csv_path)
         except Exception as e:
@@ -460,7 +460,7 @@ def build_material_phase_data(
                 classifier_options.get("model"),
             )
         except Exception as e:
-            raise RuntimeError(f"llm_instance required but materials_phase LLM unavailable: {e}")
+            raise RuntimeError(f"llm_instance required but llm_phase_diagram_gen LLM unavailable: {e}")
 
         # Call classifier with provided or default options
         classify_rows_with_llm(
@@ -494,8 +494,8 @@ def build_material_phase_data(
         "meta": {"log_mode": log_mode, "log_path": log_fn, "candidates_count": len(rows_for_llm)},
     }
 
-@router.post("/materials_phase")
-def materials_phase_endpoint(
+@router.post("/llm_phase_gen")
+def llm_phase_gen_endpoint(
     formula: str,
     log_mode: str = "append",
     prompt_template: Optional[str] = None,

@@ -33,8 +33,8 @@ API_KEY = os.environ.get("API_KEY")          # must match backend
 ENDPOINT = os.environ.get("ENDPOINT", "http://localhost:9000/generate")
 STREAM_ENDPOINT = os.environ.get("STREAM_ENDPOINT", "http://localhost:9000/generate-stream")
 UPLOAD_ENDPOINT = os.environ.get("UPLOAD_ENDPOINT", "http://localhost:9000/upload-context")
-PHASE_GEN_ENDPOINT = os.environ.get("PHASE_GEN_ENDPOINT", "http://127.0.0.1:9000/phase_gen")
-PHASE_MATERIALS_ENDPOINT = os.environ.get("PHASE_MATERIALS_ENDPOINT", "http://127.0.0.1:9000/materials_phase")
+SCRIPT_PHASE_GEN_ENDPOINT = os.environ.get("SCRIPT_PHASE_GEN_ENDPOINT", "http://127.0.0.1:9000/script_phase_gen")
+LLM_PHASE_GEN_ENDPOINT = os.environ.get("LLM_PHASE_GEN_ENDPOINT", "http://127.0.0.1:9000/llm_phase_gen")
 
 
 # --------------------
@@ -600,7 +600,7 @@ prompt_template_input = pn.widgets.TextAreaInput(
 
 def on_llm_fetch(event=None):
     """
-    Fetch JSON from /materials_phase, cache results and build plot.
+    Fetch JSON from /llm_phase_gen, cache results and build plot.
     """
     global _cached_NDF, _cached_CDF
 
@@ -615,7 +615,7 @@ def on_llm_fetch(event=None):
               "model": phase_llm_select.value,}
 
     try:
-        resp = requests.post(PHASE_MATERIALS_ENDPOINT, params=params, timeout=300, headers={"Authorization": f"Bearer {API_KEY}"})
+        resp = requests.post(LLM_PHASE_GEN_ENDPOINT, params=params, timeout=300, headers={"Authorization": f"Bearer {API_KEY}"})
         if resp.status_code != 200:
             phase_plot_pane.object = None
             return _notify_error(f"Error {resp.status_code}: {resp.text}")
@@ -673,7 +673,7 @@ def _show_phase_meta(data):
 
 def fetch_script_phase_data(event=None):
     """
-    Script fetch: call /phase_gen which returns JSON (neel + curie).
+    Script fetch: call /script_phase_gen which returns JSON (neel + curie).
     """
     global _cached_NDF, _cached_CDF
 
@@ -685,7 +685,7 @@ def fetch_script_phase_data(event=None):
     params = {"A": A, "B": B, "C": C, "n_steps": phase_steps.value}
 
     try:
-        resp = requests.post(PHASE_GEN_ENDPOINT, params=params, timeout=300, headers={"Authorization": f"Bearer {API_KEY}"})
+        resp = requests.post(SCRIPT_PHASE_GEN_ENDPOINT, params=params, timeout=300, headers={"Authorization": f"Bearer {API_KEY}"})
         if resp.status_code != 200:
             phase_plot_pane.object = None
             return _notify_error(f"Error {resp.status_code}: {resp.text}")
