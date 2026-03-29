@@ -1000,7 +1000,7 @@ phase_panel = pn.Column(
 )
 
 tabs = pn.Tabs(("Chat", chat_panel),
-               ("Phase diagram", phase_panel),
+               ("Phase Diagram", phase_panel),
                sizing_mode="stretch_both",)
 
 
