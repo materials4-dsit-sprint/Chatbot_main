@@ -8,192 +8,252 @@ pinned: false
 license: cc-by-nc-nd-4.0
 ---
 
-# 📘 Materials AI Chatbot & Phase Diagram Generator
+# Materials AI Chatbot & Phase Diagram Generator
 
-An AI-powered materials science assistant that:
+An AI-powered materials science assistant that provides:
 
-- 📄 Performs PDF-based semantic question answering (RAG pipeline)
-- 📊 Generates phase diagrams from structured datasets
-- 🤖 Integrates LLM reasoning with experimental temperature data
-- 🌐 Provides an interactive Panel-based web interface
+- PDF-based semantic question answering with retrieval-augmented generation
+- Phase diagram generation from structured materials datasets
+- A FastAPI backend and Panel frontend
+- Support for either Hugging Face models or Ollama models
 
----
+## Architecture
 
-# 🏗️ Architecture Overview
+Frontend (Panel) -> FastAPI backend -> retrieval pipeline -> embeddings/vector stores -> LLM runtime (Hugging Face or Ollama)
 
-Frontend (Panel + hvPlot) ⬇ FastAPI Backend ⬇ LangChain RAG Pipeline ⬇ Sentence-Transformers + FAISS ⬇ LLM (DeepSeek / local model)
+## Repository Entry Points
 
----
+This version is started with the provided shell scripts:
 
-# 📦 Installation Guide
+- `backend.sh`: activates the `pdfchat` conda environment, clones or reuses the dataset storage repo in `./storage`, starts periodic storage sync, and launches the FastAPI backend on `127.0.0.1:9000`
+- `frontend.sh`: activates the `pdfchat` conda environment and launches the Panel frontend on `127.0.0.1:5006`
+- `start.sh`: container entrypoint used by Docker; starts the backend on port `9000` and the frontend on port `7860`
 
-### 1️⃣ Clone Repository
+## Prerequisites
 
-```bash
-git clone https://github.com/yourusername/materials-chatbot.git
-cd materials-chatbot
-```
+### Running from source
 
----
+- Python 3.10+ and Conda
+- `git` and `git-lfs`
+- Internet access on first run for model and dependency downloads
+- Access to the Hugging Face dataset repo used for storage sync
 
-### 2️⃣ Create Conda Environment (Recommended)
+### Running with Docker
 
-```bash
-conda create -n pdfchat python=3.10
-conda activate pdfchat
-```
+- Docker installed and running
+- Access to the same required model and dataset credentials
 
----
+### If using Ollama
 
-### 3️⃣ Install Requirements
-
-```bash
-pip install -r requirements.txt
-```
-
----
-
-# 🔐 Environment Variable Setup (Required)
-
-This project requires an API key for frontend–backend authentication.
-
-### Add API\_KEY to your \~/.bashrc
-
-```bash
-nano ~/.bashrc
-```
-
-Add:
-
-```bash
-export API_KEY="your_secure_key_here"
-```
-
-Reload:
-
-```bash
-source ~/.bashrc
-```
-
-Verify:
-
-```bash
-echo $API_KEY
-```
-
-Optional pipeline selection:
-
-```bash
-export WHICH_PIPELINE="hf"      # or "ollama"
-export HF_MODEL="deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
-export OLLAMA_MODEL="deepseek-r1:1.5b"
-export OLLAMA_BASE_URL="http://127.0.0.1:11434"
-```
-
----
-
-# 🤖 Installing DeepSeek Models (Local LLM)
-
-This project can run using DeepSeek 8B or 1.5B locally.
-
-### 1️⃣ Install Ollama
-
-Linux/macOS:
-
-```bash
-curl -fsSL https://ollama.com/install.sh | sh
-```
-
-Verify:
-
-```bash
-ollama --version
-```
-
----
-
-### 2️⃣ Pull DeepSeek Models
-
-**DeepSeek 8B (Higher Quality)**
-
-```bash
-ollama pull deepseek-r1:8b
-```
-
-**DeepSeek 1.5B (Lightweight / Lower RAM)**
+- Ollama installed on the host machine
+- A local Ollama model pulled in advance, for example:
 
 ```bash
 ollama pull deepseek-r1:1.5b
 ```
 
----
+## Required Environment Variables
 
-### 3️⃣ Test Model
+The application expects environment variables to be set before startup.
+
+### Secrets that must be kept private
+
+- `HF_TOKEN`
+- `HUGGINGFACE_HUB_TOKEN`
+
+Do not commit these values to the repository or hard-code them in tracked files.
+
+### Runtime variables
+
+- `API_KEY`: shared secret used by the frontend to authenticate to the backend
+- `WHICH_PIPELINE`: selects the LLM backend, either `hf` or `ollama`
+- `HF_MODEL`: required when `WHICH_PIPELINE=hf`
+- `OLLAMA_MODEL`: required when `WHICH_PIPELINE=ollama`
+- `OLLAMA_BASE_URL`: base URL for Ollama; for Docker use `http://host.docker.internal:11434`
+- `STORAGE_DIR`: storage root
+
+### Storage directory behavior
+
+- From source: keep `STORAGE_DIR=./storage`
+  `backend.sh` clones the dataset repo into `./storage` automatically if it is not already present.
+- In Docker: set `STORAGE_DIR=/app/storage`
+
+## Example Environment Setup
+
+Set these variables in your shell before running the app.
+
+### Hugging Face pipeline
 
 ```bash
-ollama run deepseek-r1:8b
+export HF_TOKEN="your_hf_dataset_token"
+export HUGGINGFACE_HUB_TOKEN="your_hf_model_token"
+export API_KEY="your_secure_api_key"
+export WHICH_PIPELINE="hf"
+export HF_MODEL="deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
+export STORAGE_DIR="./storage"
 ```
 
-(or replace with `1.5b`)
+### Ollama pipeline from source
 
----
+```bash
+export HF_TOKEN="your_hf_dataset_token"
+export HUGGINGFACE_HUB_TOKEN="your_hf_model_token"
+export API_KEY="your_secure_api_key"
+export WHICH_PIPELINE="ollama"
+export OLLAMA_MODEL="deepseek-r1:1.5b"
+export OLLAMA_BASE_URL="http://127.0.0.1:11434"
+export STORAGE_DIR="./storage"
+```
 
-# 🚀 Running the Application
+### Ollama pipeline in Docker
 
----
+```bash
+export HF_TOKEN="your_hf_dataset_token"
+export HUGGINGFACE_HUB_TOKEN="your_hf_model_token"
+export API_KEY="your_secure_api_key"
+export WHICH_PIPELINE="ollama"
+export OLLAMA_MODEL="deepseek-r1:1.5b"
+export OLLAMA_BASE_URL="http://host.docker.internal:11434"
+export STORAGE_DIR="/app/storage"
+```
 
-### ▶ Start Backend
+## Installation From Source
+
+### 1. Clone the repository
+
+```bash
+git clone <your-repo-url>
+cd Chatbot_main
+```
+
+### 2. Create the Conda environment
+
+The startup scripts expect a Conda environment named `pdfchat`.
+
+```bash
+conda create -n pdfchat python=3.11
+conda activate pdfchat
+```
+
+### 3. Install system dependencies
+
+Install `git-lfs` if it is not already available, then initialize it:
+
+```bash
+git lfs install
+```
+
+### 4. Install Python dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+## Run From Source
+
+After exporting the required environment variables:
+
+### 1. Start the backend
 
 ```bash
 bash backend.sh
 ```
 
-This script:
+What `backend.sh` does:
 
-- Activates conda environment `pdfchat`
-- Starts FastAPI server using Uvicorn
-- Runs at [http://127.0.0.1:9000](http://127.0.0.1:9000)
+- activates the `pdfchat` Conda environment
+- clones the dataset storage repository into `./storage` if needed
+- pulls Git LFS data for the storage repo
+- starts the FastAPI backend at [http://127.0.0.1:9000](http://127.0.0.1:9000)
 
----
+### 2. Start the frontend in a second terminal
 
-### ▶ Start Frontend
-
-Open a new terminal and run:
+Use the same shell environment so the frontend sees the same `API_KEY` and pipeline configuration.
 
 ```bash
 bash frontend.sh
 ```
 
-This script:
+The frontend is then available at [http://127.0.0.1:5006](http://127.0.0.1:5006).
 
-- Activates conda environment `pdfchat`
-- Launches Panel app
-- Runs at [http://127.0.0.1:5006](http://127.0.0.1:5006)
+## Build And Run With Docker
 
+### 1. Build the image
 
----
+```bash
+docker build -t materials-chatbot .
+```
 
-# 📊 Features
+### 2. Run the container
 
-### 🔹 PDF Chatbot (RAG Pipeline)
+Use `STORAGE_DIR=/app/storage` inside the container. The container entrypoint is `start.sh`, which starts both services.
+
+```bash
+docker run --rm -it \
+  -p 7860:7860 \
+  -p 9000:9000 \
+  -e HF_TOKEN="$HF_TOKEN" \
+  -e HUGGINGFACE_HUB_TOKEN="$HUGGINGFACE_HUB_TOKEN" \
+  -e API_KEY="$API_KEY" \
+  -e WHICH_PIPELINE="$WHICH_PIPELINE" \
+  -e HF_MODEL="$HF_MODEL" \
+  -e OLLAMA_MODEL="$OLLAMA_MODEL" \
+  -e OLLAMA_BASE_URL="$OLLAMA_BASE_URL" \
+  -e STORAGE_DIR="/app/storage" \
+  materials-chatbot
+```
+
+If you want storage data to persist outside the container, mount a host directory:
+
+```bash
+docker run --rm -it \
+  -p 7860:7860 \
+  -p 9000:9000 \
+  -v "$(pwd)/storage:/app/storage" \
+  -e HF_TOKEN="$HF_TOKEN" \
+  -e HUGGINGFACE_HUB_TOKEN="$HUGGINGFACE_HUB_TOKEN" \
+  -e API_KEY="$API_KEY" \
+  -e WHICH_PIPELINE="$WHICH_PIPELINE" \
+  -e HF_MODEL="$HF_MODEL" \
+  -e OLLAMA_MODEL="$OLLAMA_MODEL" \
+  -e OLLAMA_BASE_URL="$OLLAMA_BASE_URL" \
+  -e STORAGE_DIR="/app/storage" \
+  materials-chatbot
+```
+
+### Notes for Docker and Ollama
+
+- On macOS and Windows, `host.docker.internal` usually resolves automatically
+- On Linux, you may need to add:
+
+```bash
+--add-host=host.docker.internal:host-gateway
+```
+
+### Docker service endpoints
+
+- Frontend: [http://127.0.0.1:7860](http://127.0.0.1:7860)
+- Backend API: [http://127.0.0.1:9000](http://127.0.0.1:9000)
+
+## Features
+
+### PDF chatbot
 
 - PDF ingestion
-- Recursive text splitting
-- Embedding generation (Sentence-Transformers)
+- sentence-transformer embeddings
 - FAISS vector similarity search
-- LLM-based answer synthesis
+- LLM answer generation with either Hugging Face or Ollama
 
-### 🔹 Phase Diagram Generator
+### Phase diagram generator
 
-- Extracts Curie / Néel temperatures
-- Supports A(1-x)B(x)C compounds
-- Interactive hvPlot visualisation
-- Optional LLM-assisted interpretation
+- Curie / Neel temperature extraction workflows
+- interactive visualisation with hvPlot and HoloViews
+- script-based and LLM-assisted generation paths
 
----
+## Operational Notes
 
-# ⚠️ Notes
-
-- First run requires internet to download embedding models.
-- DeepSeek 8B requires significantly more RAM than 1.5B.
-- For GPU systems, ensure proper CUDA configuration.
+- The backend and frontend must use the same `API_KEY`
+- `WHICH_PIPELINE` must match the corresponding model variable you provide
+- `HF_TOKEN` is used by the storage clone/sync workflow
+- `HUGGINGFACE_HUB_TOKEN` is needed for authenticated Hugging Face model access when using the HF pipeline
+- The first run may take time because models, embeddings, and dataset assets may need to be downloaded
