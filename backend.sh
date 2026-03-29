@@ -88,6 +88,20 @@ if [ ! -d "${DATASET_REPO_DIR}/.git" ]; then
         cd "${DATASET_REPO_DIR}" || exit 0
         git lfs pull || true
     )
+    echo "[git] Dataset repo cloned successfully into ${DATASET_REPO_DIR}"
+else
+    echo "[git] Dataset repo already present at ${DATASET_REPO_DIR}; pulling latest changes"
+    (
+        cd "${DATASET_REPO_DIR}" || exit 0
+        git remote set-url origin "${DATASET_REPO_URL}" || true
+        current_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
+        if [ "${current_branch}" = "HEAD" ] || [ -z "${current_branch}" ]; then
+            current_branch="main"
+        fi
+        git pull --rebase --autostash origin "${current_branch}"
+        git lfs pull || true
+    )
+    echo "[git] Dataset repo updated successfully at ${DATASET_REPO_DIR}"
 fi
 
 start_storage_sync_loop
