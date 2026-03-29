@@ -516,112 +516,38 @@ def build_plot(plot_pane, control_plot_type, control_center_selector):
 
 
 # -----------------------
-# No-LLM tab widgets and pane
+# Phase diagram widgets and pane
 # -----------------------
-mat_a = pn.widgets.TextInput(name="Material A (1-x)", value="La", width=180)
-mat_b = pn.widgets.TextInput(name="Material B (x)", value="Sr", width=180)
-mat_c = pn.widgets.TextInput(name="Material C (invariant)", value="MnO3", width=180)
-gen_steps = pn.widgets.IntInput(name="Steps", value=101, start=3, width=180)
-# gen_log_mode = pn.widgets.Select(name="Log mode", options=["append", "use", "recompute"], value="append", width=140)
-
-gen_button = pn.widgets.Button(name="Generate", button_type="primary")
-gen_plot_pane = pn.pane.HoloViews(height=450, width=900)
-
-
-def fetch_data(event=None):
-    """
-    No-LLM fetch: call /phase_gen which returns JSON (neel + curie).
-    """
-    global _cached_NDF, _cached_CDF
-
-    A = mat_a.value.strip()
-    B = mat_b.value.strip()
-    C = mat_c.value.strip()
-    if not (A and B and C):
-        gen_plot_pane.object = None
-        return pn.state.notifications.error("All three material fields (A, B, C) are required")
-
-    params = {"A": A, "B": B, "C": C, "n_steps": gen_steps.value}
-    # if server supports log_mode for this endpoint, include it (optional)
-    # params["log_mode"] = gen_log_mode.value if gen_log_mode.value else "append"
-
-    try:
-        resp = requests.post(PHASE_GEN_ENDPOINT, params=params, timeout=300, headers={"Authorization": f"Bearer {API_KEY}"})
-        if resp.status_code != 200:
-            gen_plot_pane.object = None
-            return pn.state.notifications.error(f"Error {resp.status_code}: {resp.text}")
-
-        data = resp.json()
-        # server returns "neel" and "curie" records
-        _cached_NDF = pd.DataFrame(data.get("neel", []))
-        _cached_CDF = pd.DataFrame(data.get("curie", []))
-
-        # build initial plot
-        build_plot(gen_plot_pane, plot_type, center_selector)
-
-        # show helpful metadata if present
-        meta = data.get("meta", {})
-        info = []
-        if meta.get("log_path"):
-            info.append(f"log: {meta.get('log_path')}")
-        if meta.get("candidates_count") is not None:
-            info.append(f"candidates: {meta.get('candidates_count')}")
-        if info:
-            if getattr(pn.state, "notifications", None) is not None:
-                pn.state.notifications.info("\n".join(info))
-            else:
-                print("INFO:", "\n".join(info))
-
-    except Exception as e:
-        _cached_NDF = None
-        _cached_CDF = None
-        llm_plot_pane.object = None
-        if getattr(pn.state, "notifications", None) is not None:
-            pn.state.notifications.error(f"Request failed: {e}")
-        else:
-            # fallback so you still see the error in server logs
-            print("ERROR: Request failed:", e)
-
-
-gen_button.on_click(fetch_data)
-
-gen_panel = pn.Column(
-    "## Phase Diagram Builder (script)",
-    pn.Row(mat_a, mat_b, mat_c, gen_steps),
-    pn.Spacer(height=10),
-    pn.Row(gen_button, pn.Spacer(width=20), plot_type, 
-           pn.Spacer(width=20), center_selector, sizing_mode="fixed"),
-    # pn.Row(plot_type, pn.Spacer(width=10), center_selector, sizing_mode="fixed"),
-    pn.Spacer(height=10),
-    gen_plot_pane,
+phase_mat_a = pn.widgets.TextInput(name="Material A (1-x)", value="La", width=180)
+phase_mat_b = pn.widgets.TextInput(name="Material B (x)", value="Sr", width=180)
+phase_mat_c = pn.widgets.TextInput(name="Material C (invariant)", value="MnO3", width=180)
+phase_steps = pn.widgets.IntInput(name="Steps", value=101, start=3, width=180)
+phase_mode_selector = pn.widgets.RadioButtonGroup(
+    name="Pipeline",
+    options=OrderedDict([("LLM", "llm"), ("Script", "script")]),
+    value="llm",
+    button_type="default",
+    button_style="outline",
+    width=180,
 )
-
-# -----------------------
-# LLM tab widgets and pane
-# -----------------------
-llm_mat_a = pn.widgets.TextInput(name="Material A (1-x)", value="La", width=180)
-llm_mat_b = pn.widgets.TextInput(name="Material B (x)", value="Sr", width=180)
-llm_mat_c = pn.widgets.TextInput(name="Material C (invariant)", value="MnO3", width=180)
-llm_steps = pn.widgets.IntInput(name="Steps", value=101, start=3, width=180)
-llm_select = pn.widgets.Select(
+phase_llm_select = pn.widgets.Select(
     name="LLM",
     options=get_model_options(),
     value=get_default_model_key(),
     width=180,
 )
 
-llm_log_mode = pn.widgets.RadioButtonGroup(
+phase_log_mode = pn.widgets.RadioButtonGroup(
     name="Log mode",
-    options=OrderedDict([("Append","append"), ("Use","use"), ("Recompute","recompute")]),
+    options=OrderedDict([("Append", "append"), ("Use", "use"), ("Recompute", "recompute")]),
     value="use",
     button_type="default",
-    button_style="outline", width=220
+    button_style="outline",
+    width=220,
 )
 
-# llm_log_mode = pn.widgets.Select(name="Log mode", options=["append", "use", "recompute"], value="append", width=140)
-
-llm_gen_button = pn.widgets.Button(name="Generate", button_type="primary")
-llm_plot_pane = pn.pane.HoloViews(height=450, width=900)
+phase_gen_button = pn.widgets.Button(name="Generate", button_type="primary")
+phase_plot_pane = pn.pane.HoloViews(height=450, width=900)
 
 
 DEFAULT_PROMPT_TEMPLATE = """You are a careful materials scientist and a strict JSON-output assistant.
@@ -670,84 +596,152 @@ def on_llm_fetch(event=None):
     """
     global _cached_NDF, _cached_CDF
 
-    A = llm_mat_a.value.strip()
-    B = llm_mat_b.value.strip()
-    C = llm_mat_c.value.strip()
+    A, B, C = _get_phase_materials()
     if not (A and B and C):
-        llm_plot_pane.object = None
-        return pn.state.notifications.error("All three material fields (A, B, C) are required")
+        phase_plot_pane.object = None
+        return _notify_error("All three material fields (A, B, C) are required")
 
     formula = f"{A}(1-x){B}(x){C}"
-    params = {"formula": formula, "log_mode": llm_log_mode.value,
+    params = {"formula": formula, "log_mode": phase_log_mode.value,
               "prompt_template": prompt_template_input.value,
-              "model": llm_select.value,}
+              "model": phase_llm_select.value,}
 
     try:
         resp = requests.post(PHASE_MATERIALS_ENDPOINT, params=params, timeout=300, headers={"Authorization": f"Bearer {API_KEY}"})
         if resp.status_code != 200:
-            llm_plot_pane.object = None
-            return pn.state.notifications.error(f"Error {resp.status_code}: {resp.text}")
+            phase_plot_pane.object = None
+            return _notify_error(f"Error {resp.status_code}: {resp.text}")
+
+        data = resp.json()
+        if data.get("error"):
+            phase_plot_pane.object = None
+            return _notify_error(data["error"])
+
+        _cached_NDF = pd.DataFrame(data.get("neel", []))
+        _cached_CDF = pd.DataFrame(data.get("curie", []))
+
+        build_plot(phase_plot_pane, plot_type, center_selector)
+        _show_phase_meta(data)
+
+    except Exception as e:
+        _cached_NDF = None
+        _cached_CDF = None
+        phase_plot_pane.object = None
+        _notify_error(f"Request failed: {e}")
+
+
+def _notify_error(message):
+    if getattr(pn.state, "notifications", None) is not None:
+        return pn.state.notifications.error(message)
+    print("ERROR:", message)
+    return None
+
+
+def _notify_info(message):
+    if getattr(pn.state, "notifications", None) is not None:
+        return pn.state.notifications.info(message)
+    print("INFO:", message)
+    return None
+
+
+def _get_phase_materials():
+    return (
+        phase_mat_a.value.strip(),
+        phase_mat_b.value.strip(),
+        phase_mat_c.value.strip(),
+    )
+
+
+def _show_phase_meta(data):
+    meta = data.get("meta", {})
+    info = []
+    if meta.get("log_path"):
+        info.append(f"log: {meta.get('log_path')}")
+    if meta.get("candidates_count") is not None:
+        info.append(f"candidates: {meta.get('candidates_count')}")
+    if info:
+        _notify_info("\n".join(info))
+
+
+def fetch_script_phase_data(event=None):
+    """
+    Script fetch: call /phase_gen which returns JSON (neel + curie).
+    """
+    global _cached_NDF, _cached_CDF
+
+    A, B, C = _get_phase_materials()
+    if not (A and B and C):
+        phase_plot_pane.object = None
+        return _notify_error("All three material fields (A, B, C) are required")
+
+    params = {"A": A, "B": B, "C": C, "n_steps": phase_steps.value}
+
+    try:
+        resp = requests.post(PHASE_GEN_ENDPOINT, params=params, timeout=300, headers={"Authorization": f"Bearer {API_KEY}"})
+        if resp.status_code != 200:
+            phase_plot_pane.object = None
+            return _notify_error(f"Error {resp.status_code}: {resp.text}")
 
         data = resp.json()
         _cached_NDF = pd.DataFrame(data.get("neel", []))
         _cached_CDF = pd.DataFrame(data.get("curie", []))
 
-        build_plot(llm_plot_pane, plot_type, center_selector)
-
-        meta = data.get("meta", {})
-        info = []
-        if meta.get("log_path"):
-            info.append(f"log: {meta.get('log_path')}")
-        if meta.get("candidates_count") is not None:
-            info.append(f"candidates: {meta.get('candidates_count')}")
-        if info:
-            if getattr(pn.state, "notifications", None) is not None:
-                pn.state.notifications.info("\n".join(info))
-            else:
-                print("INFO:", "\n".join(info))
+        build_plot(phase_plot_pane, plot_type, center_selector)
+        _show_phase_meta(data)
 
     except Exception as e:
         _cached_NDF = None
         _cached_CDF = None
-        llm_plot_pane.object = None
-        if getattr(pn.state, "notifications", None) is not None:
-            pn.state.notifications.error(f"Request failed: {e}")
-        else:
-            # fallback so you still see the error in server logs
-            print("ERROR: Request failed:", e)
+        phase_plot_pane.object = None
+        _notify_error(f"Request failed: {e}")
 
 
-llm_gen_button.on_click(on_llm_fetch)
+def on_phase_generate(event=None):
+    if phase_mode_selector.value == "script":
+        return fetch_script_phase_data(event)
+    return on_llm_fetch(event)
+
+
+phase_gen_button.on_click(on_phase_generate)
+
+
+llm_controls = pn.Column(
+    pn.Row(phase_llm_select, phase_log_mode, sizing_mode="fixed"),
+    prompt_template_input,
+    sizing_mode="stretch_width",
+)
+
+
+def _sync_phase_mode(event=None):
+    llm_controls.visible = phase_mode_selector.value == "llm"
+
+
+_sync_phase_mode()
+phase_mode_selector.param.watch(_sync_phase_mode, "value")
 
 # -----------------------
 # Wire interactive watchers so toggles update without re-fetching
 # -----------------------
-# When plot_type or center_selector change, rebuild both panes from the cached data
-plot_type.param.watch(lambda ev: build_plot(gen_plot_pane, plot_type, center_selector), "value")
-plot_type.param.watch(lambda ev: build_plot(llm_plot_pane, plot_type, center_selector), "value")
-center_selector.param.watch(lambda ev: build_plot(gen_plot_pane, plot_type, center_selector), "value")
-center_selector.param.watch(lambda ev: build_plot(llm_plot_pane, plot_type, center_selector), "value")
+# When plot_type or center_selector change, rebuild the active pane from cached data
+plot_type.param.watch(lambda ev: build_plot(phase_plot_pane, plot_type, center_selector), "value")
+center_selector.param.watch(lambda ev: build_plot(phase_plot_pane, plot_type, center_selector), "value")
 
 # -----------------------
 # Compose panels and template
 # -----------------------
 phase_panel = pn.Column(
-    "## Phase Diagram Builder (LLM)",
-    pn.Row(llm_mat_a, llm_mat_b, llm_mat_c, llm_steps, llm_select),
-    prompt_template_input,
-    # pn.Row(llm_log_mode),
+    "## Phase Diagram Builder",
+    pn.Row(phase_mat_a, phase_mat_b, phase_mat_c, phase_steps, phase_mode_selector),
+    llm_controls,
     pn.Spacer(height=10),
-    pn.Row(llm_log_mode, pn.Spacer(width=20),
-           llm_gen_button, pn.Spacer(width=20), plot_type, 
+    pn.Row(phase_gen_button, pn.Spacer(width=20), plot_type,
            pn.Spacer(width=20), center_selector, sizing_mode="fixed"),
-    # pn.Row(plot_type, pn.Spacer(width=10), center_selector, sizing_mode="fixed"),
     pn.Spacer(height=10),
-    llm_plot_pane,
+    phase_plot_pane,
 )
 
 tabs = pn.Tabs(("Chat", chat_panel),
-               ("Phase diagram (LLM)", phase_panel),
-               ("Phase diagram (script)", gen_panel), 
+               ("Phase diagram", phase_panel),
                sizing_mode="stretch_both",)
 
 
