@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# core.py
+# cb_core.py
 import os
 from typing import List
 from langchain_community.document_loaders import PyPDFLoader
@@ -25,7 +25,7 @@ def upload_pdf(src_path: str, dest_dir: str) -> str:
 def create_or_load_vector_store(pdf_path: str, vs_root: str, embeddings, reindex: bool = False):
     """
     Create or load a FAISS vector store for a single PDF.
-    embeddings must implement embed_documents/embed_query (see embeddings.py)
+    embeddings must implement embed_documents/embed_query (see cb_embeddings.py)
     """
     os.makedirs(vs_root, exist_ok=True)
     name = os.path.basename(pdf_path)

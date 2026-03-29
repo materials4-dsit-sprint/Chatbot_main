@@ -20,7 +20,7 @@ import holoviews as hv
 hv.extension("bokeh")
 import hvplot.pandas  # activates hvplot
 from collections import OrderedDict
-from llm_runtime import get_model_options, get_default_model_key
+from helper_llm_runtime import get_model_options, get_default_model_key
 pn.config.sizing_mode = "stretch_width"
 pn.extension("filedropper")
 

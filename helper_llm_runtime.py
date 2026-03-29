@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from hf_utils import build_text_generation_pipeline
+from helper_hf_utils import build_text_generation_pipeline
 
 PIPELINE_HF = "hf"
 PIPELINE_OLLAMA = "ollama"
@@ -42,7 +42,7 @@ MODEL_SPECS: dict[str, dict[str, str]] = {
 def get_active_pipeline() -> str:
     pipeline = os.environ.get("WHICH_PIPELINE", PIPELINE_HF).strip().lower()
     if pipeline not in SUPPORTED_PIPELINES:
-        print(f"[llm_runtime] Unsupported WHICH_PIPELINE={pipeline!r}; falling back to '{PIPELINE_HF}'.")
+        print(f"[helper_llm_runtime] Unsupported WHICH_PIPELINE={pipeline!r}; falling back to '{PIPELINE_HF}'.")
         return PIPELINE_HF
     return pipeline
 

@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-pdf_chatbot
+chatbot
 
 PDF-based chatbot using sentence-transformers for embeddings,
 FAISS for retrieval, and Ollama for generation.
 """
 
-# pdf_chatbot.py
+# chatbot.py
 import sys
 import os
 import argparse
 from langchain_core.prompts import ChatPromptTemplate
 
-from embeddings import get_embeddings_provider
-from llm_runtime import build_llm, get_active_pipeline, get_ollama_base_url
-import core
+from cb_embeddings import get_embeddings_provider
+from helper_llm_runtime import build_llm, get_active_pipeline, get_ollama_base_url
+import cb_core as core
 
 PDFS_DIR_DEFAULT = os.path.join("/app/storage", "pdfs")
 VS_DIR_DEFAULT = os.path.join("/app/storage", "pdf_vectorstores")

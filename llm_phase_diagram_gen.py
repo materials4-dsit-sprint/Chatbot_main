@@ -19,10 +19,10 @@ import json
 import numpy as np
 import pandas as pd
 import re
-from embeddings import get_embeddings_provider
+from cb_embeddings import get_embeddings_provider
 from fastapi import APIRouter
 from typing import List, Dict, Any, Optional
-from llm_runtime import build_llm, get_active_pipeline, get_configured_default_model, resolve_model_selection
+from helper_llm_runtime import build_llm, get_active_pipeline, get_configured_default_model, resolve_model_selection
 router = APIRouter()
 
 from llm_pdg_classifier import classify_rows_with_llm, OUT_DIR, _safe_filename

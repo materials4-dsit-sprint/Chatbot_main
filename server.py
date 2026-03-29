@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# pdf_chatbot_server.py
+# server.py
 """
 Load embeddings + multiple vectorstores + Ollama model from PDFs in ./data/pdfs, then serve /generate.
 Run with uvicorn (recommended):
-    uvicorn pdf_chatbot_server:app --host 127.0.0.1 --port 9000
+    uvicorn server:app --host 127.0.0.1 --port 9000
 Or run directly:
-    python pdf_chatbot_server.py --pdfs-dir ./pdfs --vs-dir ~/pdf_vectorstores
+    python server.py --pdfs-dir ./pdfs --vs-dir ~/pdf_vectorstores
 """
 
 import argparse
@@ -20,14 +20,14 @@ from fastapi import FastAPI, HTTPException, Header, File, UploadFile, Form
 from pydantic import BaseModel
 import uvicorn
 from starlette.concurrency import run_in_threadpool
-from pdf_chatbot import build_prompt, invoke_llm_and_get_text
-from embeddings import get_embeddings_provider
-import core
+from chatbot import build_prompt, invoke_llm_and_get_text
+from cb_embeddings import get_embeddings_provider
+import cb_core as core
 import numpy as np
 import pandas as pd
 import json
 from fastapi.responses import JSONResponse, StreamingResponse
-from llm_runtime import build_llm, get_active_pipeline, get_configured_default_model, get_ollama_base_url, resolve_model_selection
+from helper_llm_runtime import build_llm, get_active_pipeline, get_configured_default_model, get_ollama_base_url, resolve_model_selection
 
 # Defaults
 PDFS_DIR_DEFAULT = os.path.join("/app/storage", "pdfs")
@@ -833,4 +833,4 @@ if __name__ == "__main__":
     cli_model = args.ollama_model if get_active_pipeline() == "ollama" else args.hf_model
     init_services_from_pdfs(args.pdfs_dir, args.vs_dir, args.sent_model, cli_model, args.reindex)
     print("Initialization complete. Starting server on http://%s:%d" % (args.host, args.port))
-    uvicorn.run("pdf_chatbot_server:app", host=args.host, port=args.port, log_level="info")
+    uvicorn.run("server:app", host=args.host, port=args.port, log_level="info")

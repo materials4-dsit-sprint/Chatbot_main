@@ -86,7 +86,7 @@ start_storage_sync_loop
 
 echo "Starting backend (FastAPI)..."
 
-uvicorn pdf_chatbot_server:app \
+uvicorn server:app \
   --host 0.0.0.0 \
   --port 9000 &
 

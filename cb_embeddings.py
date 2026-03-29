@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# embeddings.py
+# cb_embeddings.py
 import os
 from typing import List, Any
 

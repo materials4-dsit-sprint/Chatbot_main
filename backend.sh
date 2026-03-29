@@ -14,8 +14,7 @@ source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate pdfchat
 
 echo "Starting backend server (FastAPI + Uvicorn)..."
-uvicorn pdf_chatbot_server:app \
+uvicorn server:app \
   --host 127.0.0.1 \
   --port 9000
-
 
