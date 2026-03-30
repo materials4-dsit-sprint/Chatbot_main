@@ -95,6 +95,6 @@ echo "Starting frontend (Panel)..."
 python -m panel serve frontend_app.py \
   --address 0.0.0.0 \
   --port 7860 \
-  --allow-websocket-origin="*" \
+  --allow-websocket-origin="dsit-tests-chatbot-main.hf.space" \
   --allow-websocket-origin="localhost:7860" \
   --session-token-expiration 3600

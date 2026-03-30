@@ -4,6 +4,8 @@ emoji: 👀
 colorFrom: yellow
 colorTo: green
 sdk: docker
+app_port: 7860
+base_path: /frontend_app
 pinned: false
 license: cc-by-nc-nd-4.0
 ---
