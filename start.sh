@@ -4,9 +4,25 @@ set -e
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export OMP_NUM_THREADS=1
 
+: "${HF_TOKEN:?HF_TOKEN must be set with access to the Hugging Face dataset repo}"
 : "${DATASET_REPO:?DATASET_REPO must be set, for example 'owner/dataset_name'}"
 DATASET_REPO_URL="https://hf:${HF_TOKEN}@huggingface.co/datasets/${DATASET_REPO}"
 echo "Using dataset repo: ${DATASET_REPO}"
+
+print_dataset_repo_error() {
+    local action="$1"
+    echo "[git] ERROR: Failed to ${action} for dataset repo '${DATASET_REPO}'."
+    echo "[git] Verify that DATASET_REPO is correct and that HF_TOKEN has access to this dataset repo."
+}
+
+run_or_fail() {
+    local action="$1"
+    shift
+    if ! "$@"; then
+        print_dataset_repo_error "${action}"
+        exit 1
+    fi
+}
 
 sync_storage_updates() {
     local sync_paths=()
@@ -34,7 +50,11 @@ sync_storage_updates() {
         return 0
     fi
 
-    git remote set-url origin "$DATASET_REPO_URL" || true
+    if ! git remote set-url origin "$DATASET_REPO_URL"; then
+        print_dataset_repo_error "set git remote"
+        cd /app || return 0
+        return 1
+    fi
     git config user.name "Chatbot Container" || true
     git config user.email "chatbot-container@local" || true
 
@@ -53,8 +73,16 @@ sync_storage_updates() {
         current_branch="main"
     fi
 
-    git pull --rebase --autostash origin "$current_branch" || true
-    git push origin "HEAD:$current_branch" || true
+    if ! git pull --rebase --autostash origin "$current_branch"; then
+        print_dataset_repo_error "pull before sync push"
+        cd /app || return 0
+        return 1
+    fi
+    if ! git push origin "HEAD:$current_branch"; then
+        print_dataset_repo_error "push storage updates"
+        cd /app || return 0
+        return 1
+    fi
 
     cd /app || return 0
 }
@@ -64,7 +92,9 @@ start_storage_sync_loop() {
         while true; do
             sleep 900
             echo "Running periodic storage sync..."
-            sync_storage_updates
+            if ! sync_storage_updates; then
+                echo "[git] Storage sync failed; will retry on the next sync interval."
+            fi
         done
     ) &
 }
@@ -78,9 +108,9 @@ echo "Downloading dataset storage..."
 
 # Clone dataset repo if storage is empty
 if [ ! "$(ls -A /app/storage)" ]; then
-    git clone "$DATASET_REPO_URL" /app/storage
+    run_or_fail "clone dataset repo into /app/storage" git clone "$DATASET_REPO_URL" /app/storage
     cd /app/storage
-    git lfs pull
+    run_or_fail "pull git-lfs objects for /app/storage" git lfs pull
     cd /app
 fi
 
