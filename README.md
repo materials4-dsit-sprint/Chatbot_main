@@ -47,7 +47,7 @@ Under the hood, the backend uses a shared storage area for PDFs, vector stores, 
 #### Prerequisites
 
 - Conda installed
-- Python 3.11 available for the `pdfchat` environment
+- Python 3.11 available for a Conda environment of your choice, for example `my-env`
 - `git` and `git-lfs` installed
 - Access to the Hugging Face dataset repo used for storage sync
 - Internet access on first run for dependency, model, and dataset downloads
@@ -63,17 +63,17 @@ ollama pull deepseek-r1:1.5b
 
 Keep these secrets private and never commit them:
 
-- `HF_TOKEN`
-- `HUGGINGFACE_HUB_TOKEN`
+- `HF_TOKEN`: Hugging Face token used by `backend.sh` to clone the dataset-backed storage repository into `./storage` and to sync generated outputs back to that repo
+- `HUGGINGFACE_HUB_TOKEN`: Hugging Face Hub token used when the app needs authenticated access to Hugging Face model artifacts
 
 Set the runtime variables before starting the app:
 
-- `API_KEY`
-- `WHICH_PIPELINE` with value `hf` or `ollama`
-- `HF_MODEL` if `WHICH_PIPELINE=hf`
-- `OLLAMA_MODEL` if `WHICH_PIPELINE=ollama`
-- `OLLAMA_BASE_URL=http://127.0.0.1:11434` if using Ollama
-- `STORAGE_DIR=./storage`
+- `API_KEY`: shared secret used by the frontend when calling the backend API; both services must use the same value
+- `WHICH_PIPELINE`: selects which LLM backend to use, either `hf` for Hugging Face Transformers or `ollama` for a local Ollama server
+- `HF_MODEL`: the Hugging Face model identifier to load when `WHICH_PIPELINE=hf`
+- `OLLAMA_MODEL`: the Ollama model name to call when `WHICH_PIPELINE=ollama`
+- `OLLAMA_BASE_URL=http://127.0.0.1:11434`: the local Ollama server endpoint used only when `WHICH_PIPELINE=ollama`
+- `STORAGE_DIR=./storage`: the local storage root used by the backend for PDFs, vector stores, logs, materials data, and generated outputs
 
 #### Storage directory
 
@@ -119,11 +119,11 @@ git clone <your-repo-url>
 cd Chatbot_main
 ```
 
-Create the Conda environment expected by the scripts:
+Create a Conda environment with any name you prefer, for example `my-env`:
 
 ```bash
-conda create -n pdfchat python=3.11
-conda activate pdfchat
+conda create -n my-env python=3.11
+conda activate my-env
 ```
 
 Initialize Git LFS:
@@ -158,7 +158,7 @@ This starts the Panel UI on [http://127.0.0.1:5006](http://127.0.0.1:5006).
 
 #### Operational notes
 
-- `backend.sh` and `frontend.sh` both expect the Conda environment to be named `pdfchat`
+- Choose any Conda environment name you prefer, but make sure the activation lines in `backend.sh` and `frontend.sh` match that name before running the scripts
 - The frontend and backend must use the same `API_KEY`
 - `HF_TOKEN` is used for dataset clone and periodic sync
 - `HUGGINGFACE_HUB_TOKEN` is needed for authenticated Hugging Face model access
@@ -177,17 +177,17 @@ This starts the Panel UI on [http://127.0.0.1:5006](http://127.0.0.1:5006).
 
 Keep these secrets private and never bake them into the image:
 
-- `HF_TOKEN`
-- `HUGGINGFACE_HUB_TOKEN`
+- `HF_TOKEN`: Hugging Face token passed into the container so `start.sh` can clone the dataset-backed storage repository into `/app/storage` and sync generated outputs back to it
+- `HUGGINGFACE_HUB_TOKEN`: Hugging Face Hub token used inside the container for authenticated access to Hugging Face model artifacts
 
 Set the runtime variables for the container:
 
-- `API_KEY`
-- `WHICH_PIPELINE` with value `hf` or `ollama`
-- `HF_MODEL` if `WHICH_PIPELINE=hf`
-- `OLLAMA_MODEL` if `WHICH_PIPELINE=ollama`
-- `OLLAMA_BASE_URL=http://host.docker.internal:11434` if using Ollama
-- `STORAGE_DIR=/app/storage`
+- `API_KEY`: shared secret used by the frontend process to authenticate requests to the backend process running in the same container
+- `WHICH_PIPELINE`: selects whether the container uses `hf` or `ollama` as the LLM backend
+- `HF_MODEL`: the Hugging Face model identifier to load when `WHICH_PIPELINE=hf`
+- `OLLAMA_MODEL`: the Ollama model name to call when `WHICH_PIPELINE=ollama`
+- `OLLAMA_BASE_URL=http://host.docker.internal:11434`: the Ollama endpoint reachable from inside the container when the model is hosted on the machine running Docker
+- `STORAGE_DIR=/app/storage`: the in-container storage root used for PDFs, vector stores, logs, materials data, and generated outputs
 
 #### Storage directory
 
@@ -303,12 +303,12 @@ Container endpoints:
 
 In the Space settings, configure these secrets and variables:
 
-- `HF_TOKEN` as a secret
-- `HUGGINGFACE_HUB_TOKEN` as a secret
-- `API_KEY`
-- `WHICH_PIPELINE=hf`
-- `HF_MODEL`
-- `STORAGE_DIR=/app/storage`
+- `HF_TOKEN` as a secret: required so the container running in the Space can clone the dataset-backed storage repository and sync generated outputs
+- `HUGGINGFACE_HUB_TOKEN` as a secret: required for authenticated access to Hugging Face model artifacts when the selected model needs it
+- `API_KEY`: shared secret used by the Panel frontend in the Space to authenticate requests to the FastAPI backend in the same container
+- `WHICH_PIPELINE=hf`: required to force the app onto the Hugging Face Transformers path, since Ollama is not used in this deployment mode
+- `HF_MODEL`: the Hugging Face model identifier that the Space should load for inference
+- `STORAGE_DIR=/app/storage`: the storage root inside the Docker container used by the Space deployment
 
 Do not set Ollama-only variables for this mode.
 
