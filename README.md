@@ -42,6 +42,7 @@ Below are three modes of running the application, supporting both offline and on
 - [1. [Offline] From source - using either Ollama or HF Transformers](#1-offline-from-source---using-either-ollama-or-hf-transformers)
 - [2. [Offline] With Docker - using either Ollama or HF Transformers](#2-offline-with-docker---using-either-ollama-or-hf-transformers)
 - [3. [Online] HF Spaces with Docker - using only the HF Transformers](#3-online-hf-spaces-with-docker---using-only-the-hf-transformers)
+- [CLI Usage](#cli-usage)
 
 
 ### 1. [Offline] From source - using either Ollama or HF Transformers
@@ -434,3 +435,90 @@ The frontend is served by Panel on the public Space URL, and the backend runs al
 - `HF_TOKEN` is still required because the app clones and syncs the dataset-backed storage repo
 - `HUGGINGFACE_HUB_TOKEN` is required for authenticated model access when needed
 - Build and startup times may be longer on first deployment because the Space needs to install dependencies and download model assets
+
+## CLI Usage
+
+Several modules in this repository are primarily intended to be imported by the backend or frontend, but the codebase currently exposes two main Python command-line entry points with explicit CLI argument parsing:
+
+- `server.py`
+- `chatbot.py`
+
+These CLIs are useful if you want to start the backend directly from Python or run a minimal terminal-based PDF chat workflow without using the Panel frontend.
+
+### When CLI can be used
+
+- `[Offline] From source`: supported; this is the most natural mode for direct CLI usage
+- `[Offline] With Docker`: possible, but only by running commands inside the container or by overriding the container entry command; it is not the default way this repo is run in Docker
+- `[Online] HF Spaces with Docker`: not intended for CLI usage; HF Spaces builds and runs the container through `start.sh`, and users do not interact with it through these Python CLIs
+
+### `server.py`
+
+Use `server.py` to initialize the retrieval stack from `STORAGE_DIR`, load the selected model pipeline, and start the FastAPI backend directly from the command line.
+
+Example:
+
+```bash
+python server.py \
+  --pdfs-dir ./storage/pdfs \
+  --vs-dir ./storage/pdf_vectorstores \
+  --host 127.0.0.1 \
+  --port 9000
+```
+
+Supported arguments:
+
+- `--pdfs-dir`: directory containing the PDF files to index and serve for retrieval
+- `--vs-dir`: directory where PDF FAISS vector stores are stored or created
+- `--hf-model`: Hugging Face model identifier to use when `WHICH_PIPELINE=hf`
+- `--ollama-model`: Ollama model name to use when `WHICH_PIPELINE=ollama`
+- `--sent-model`: sentence-transformer embedding model name
+- `--reindex`: force rebuilding the vector stores instead of reusing existing ones
+- `--host`: host interface for the FastAPI server
+- `--port`: port for the FastAPI server
+
+What it can be used for:
+
+- starting the backend without `backend.sh`
+- testing custom PDF or vector-store directories
+- forcing a rebuild of retrieval indexes with `--reindex`
+- running the API server for local development or debugging
+
+### `chatbot.py`
+
+Use `chatbot.py` for a lightweight terminal-based chatbot flow around a single PDF. It validates the PDF path, uploads or copies the PDF into the managed PDF directory, creates or loads a vector store, initializes the selected LLM backend, and starts an interactive REPL in the terminal.
+
+Example:
+
+```bash
+python chatbot.py /path/to/paper.pdf \
+  --pdfs-dir ./storage/pdfs \
+  --vs-dir ./storage/pdf_vectorstores \
+  -k 30
+```
+
+Supported arguments:
+
+- `pdf`: path to the PDF file to ingest for the session
+- `--pdfs-dir`: directory where the managed PDF copy is stored
+- `--vs-dir`: directory where the PDF vector store is stored or created
+- `--hf-model`: Hugging Face model identifier to use when `WHICH_PIPELINE=hf`
+- `--ollama-model`: Ollama model name to use when `WHICH_PIPELINE=ollama`
+- `--sent-model`: sentence-transformer embedding model name
+- `--reindex`: force rebuilding the vector store for the PDF
+- `-k`: number of retrieved chunks to use when answering each question
+
+What it can be used for:
+
+- quickly testing retrieval and generation on a single PDF
+- debugging model selection without starting the full frontend
+- rebuilding a PDF vector store for one document
+- running a local terminal REPL instead of the web UI
+
+### Notes
+
+- These CLIs still rely on the same environment variables described in the operation-mode sections above, especially `WHICH_PIPELINE`, `HF_MODEL` or `OLLAMA_MODEL`, `HUGGINGFACE_HUB_TOKEN`, and `STORAGE_DIR`
+- For normal local development, CLI usage is best suited to the from-source workflow rather than Docker or HF Spaces
+- In offline Docker mode, you can use the CLI only if you explicitly execute `python server.py ...` or `python chatbot.py ...` inside the container environment
+- In HF Spaces mode, treat the app as a deployed web service rather than a CLI-driven application
+- If your chosen storage layout differs from the current Hugging Face dataset-backed setup, update the relevant directories and startup logic as described in the `STORAGE_DIR` subsections above
+- Other Python files in the repository are currently used mainly as imported modules or backend helpers rather than standalone CLI entry points
