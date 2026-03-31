@@ -163,7 +163,7 @@ If you want to use your own `STORAGE_DIR`, there are two common options:
 Clone the repository:
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/materials4-dsit-sprint/Chatbot_main.git
 cd Chatbot_main
 ```
 
@@ -313,7 +313,7 @@ If you want to use your own `STORAGE_DIR` in Docker, update the storage logic in
 Clone the repository:
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/materials4-dsit-sprint/Chatbot_main.git
 cd Chatbot_main
 ```
 
