@@ -21,9 +21,13 @@ An AI-powered materials science assistant that provides:
 
 ## Architecture
 
-The application is split into two main services. The frontend is a Panel app that provides the chat interface and the phase-diagram workflows. It sends authenticated requests to a FastAPI backend, which handles PDF ingestion, retrieval, model selection, answer generation, and the phase-diagram endpoints.
+The application is split into two main services that work together around a shared storage area. The frontend is a Panel application defined in `frontend_app.py`. It provides the chat UI, file upload flow, model selector, and the two phase-diagram workflows. The frontend does not run the retrieval or model inference logic itself. Instead, it sends authenticated HTTP requests to the FastAPI backend using the shared `API_KEY`, and it reads some static assets such as the logo from `STORAGE_DIR`.
 
-Under the hood, the backend uses a shared storage area for PDFs, vector stores, logs, materials datasets, and generated outputs. For language models, the runtime can switch between two offline backends: Hugging Face Transformers or a locally running Ollama server. In Docker and HF Spaces deployments, `start.sh` starts both the backend and frontend together; when running from source, `backend.sh` and `frontend.sh` are started separately.
+The backend is defined primarily in `server.py` and is responsible for startup-time initialization, retrieval, generation, PDF/CSV ingestion, and phase-diagram endpoints. On startup it reads from `STORAGE_DIR`, discovers the PDF and CSV assets available there, initializes sentence-transformer embeddings, loads or creates FAISS vector stores, and constructs the selected LLM runtime. Chat requests then go through the backend, which retrieves relevant chunks from the loaded vector stores and passes the assembled prompt to either a Hugging Face Transformers model or an Ollama-hosted model. The same backend also exposes the endpoints used by the script-based and LLM-assisted phase-diagram generation code.
+
+Several code paths depend on specific subdirectories under `STORAGE_DIR`. The chatbot expects PDF files under `pdfs/`, PDF FAISS indexes under `pdf_vectorstores/`, materials CSV data under `materials/`, CSV vector stores under `csv_vectorstores/`, and chat logs under `logs/`. Other features also read or write `materials_nollm_log/`, `materials_outputs/`, `logos/`, and `hf_cache/`. In practice, `STORAGE_DIR` is the persistent working area for the whole application: it holds user-ingested documents, derived retrieval indexes, phase-diagram inputs, generated outputs, and runtime caches.
+
+At the moment, the default workflow assumes that `STORAGE_DIR` comes from a Hugging Face dataset repository. Both `backend.sh` for source mode and `start.sh` for Docker/HF Spaces build a Git remote URL using `HF_TOKEN`, then clone that dataset repo into `STORAGE_DIR` if it is missing or empty. They also periodically sync selected generated folders back to the same remote. That behavior can be changed if you want to use your own local storage directory, a different dataset repo, or a different synchronization strategy; the mode-specific sections below explain what to change depending on how you run the app.
 
 ## Features
 
@@ -41,6 +45,10 @@ Under the hood, the backend uses a shared storage area for PDFs, vector stores, 
 - script-based and LLM-assisted generation paths
 
 ## 3 Modes of Operation
+
+- [1. [Offline] From source - using either Ollama or HF Transformers](#1-offline-from-source---using-either-ollama-or-hf-transformers)
+- [2. [Offline] With Docker - using either Ollama or HF Transformers](#2-offline-with-docker---using-either-ollama-or-hf-transformers)
+- [3. [Online] HF Spaces with Docker - using only the HF Transformers](#3-online-hf-spaces-with-docker---using-only-the-hf-transformers)
 
 ### 1. [Offline] From source - using either Ollama or HF Transformers
 
@@ -109,6 +117,33 @@ export OLLAMA_MODEL="deepseek-r1:1.5b"
 export OLLAMA_BASE_URL="http://127.0.0.1:11434"
 export STORAGE_DIR="./storage"
 ```
+
+#### About `STORAGE_DIR`
+
+In the current setup, `STORAGE_DIR` is not just an empty local folder. `backend.sh` treats it as a clone target for the Hugging Face dataset repo configured in:
+
+```bash
+DATASET_REPO_URL="https://hf:${HF_TOKEN}@huggingface.co/datasets/DSIT-TESTS/materials_dataset"
+```
+
+The storage directory should contain, or eventually be able to contain, at least these folders:
+
+- `pdfs/`
+- `pdf_vectorstores/`
+- `materials/`
+- `csv_vectorstores/`
+- `logs/`
+- `materials_nollm_log/`
+- `materials_outputs/`
+- `logos/`
+- `hf_cache/`
+
+If you want to keep using the current Hugging Face dataset repo, you need a valid `HF_TOKEN` that has access to that dataset.
+
+If you want to use your own `STORAGE_DIR`, there are two common options:
+
+- Keep the current clone-and-sync workflow, but change `DATASET_REPO_URL` in [backend.sh](/Users/kulkarni/Library/CloudStorage/OneDrive-UniversityofCambridge/ChatBot%20Project/Projects/HF/Chatbot_main/backend.sh) to point to your own Hugging Face dataset repo. In that case, `HF_TOKEN` must have access to your repo.
+- Stop cloning from Hugging Face and use a purely local folder. In that case, remove or replace the clone/pull/push logic in [backend.sh](/Users/kulkarni/Library/CloudStorage/OneDrive-UniversityofCambridge/ChatBot%20Project/Projects/HF/Chatbot_main/backend.sh), create/populate `STORAGE_DIR` yourself, and keep the expected folder structure above.
 
 #### Installation instructions
 
@@ -224,6 +259,35 @@ export OLLAMA_BASE_URL="http://host.docker.internal:11434"
 export STORAGE_DIR="/app/storage"
 ```
 
+#### About `STORAGE_DIR`
+
+In Docker mode, `start.sh` currently assumes that `/app/storage` is backed by the Hugging Face dataset repo configured in:
+
+```bash
+DATASET_REPO_URL="https://hf:$HF_TOKEN@huggingface.co/datasets/DSIT-TESTS/materials_dataset"
+```
+
+If `/app/storage` is empty, `start.sh` clones that repo there automatically and then syncs selected generated outputs back to it.
+
+The storage directory should contain, or be able to contain, these folders:
+
+- `pdfs/`
+- `pdf_vectorstores/`
+- `materials/`
+- `csv_vectorstores/`
+- `logs/`
+- `materials_nollm_log/`
+- `materials_outputs/`
+- `logos/`
+- `hf_cache/`
+
+If you want to keep the current Hugging Face-backed storage behavior, `HF_TOKEN` must be able to access that dataset repo.
+
+If you want to use your own `STORAGE_DIR` in Docker, update the storage logic in [start.sh](/Users/kulkarni/Library/CloudStorage/OneDrive-UniversityofCambridge/ChatBot%20Project/Projects/HF/Chatbot_main/start.sh):
+
+- To use your own Hugging Face dataset repo, change `DATASET_REPO_URL` to your repo and pass an `HF_TOKEN` that can access it.
+- To use a purely local or mounted storage volume, remove or replace the clone/push logic in [start.sh](/Users/kulkarni/Library/CloudStorage/OneDrive-UniversityofCambridge/ChatBot%20Project/Projects/HF/Chatbot_main/start.sh), mount or create `/app/storage` yourself, and make sure it has the expected folder structure above.
+
 #### Installation instructions
 
 Clone the repository:
@@ -334,6 +398,29 @@ WHICH_PIPELINE=hf
 HF_MODEL=deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B
 STORAGE_DIR=/app/storage
 ```
+
+#### About `STORAGE_DIR`
+
+In HF Spaces Docker mode, the app still uses the same container startup script, so `/app/storage` is currently handled by [start.sh](/Users/kulkarni/Library/CloudStorage/OneDrive-UniversityofCambridge/ChatBot%20Project/Projects/HF/Chatbot_main/start.sh). That means the Space expects `STORAGE_DIR` to be populated by cloning the configured Hugging Face dataset repo when the directory is empty.
+
+The storage directory should contain, or be able to contain, these folders:
+
+- `pdfs/`
+- `pdf_vectorstores/`
+- `materials/`
+- `csv_vectorstores/`
+- `logs/`
+- `materials_nollm_log/`
+- `materials_outputs/`
+- `logos/`
+- `hf_cache/`
+
+If you keep the current behavior, the `HF_TOKEN` secret in the Space must have permission to access the configured dataset repo.
+
+If you want to point the Space at your own storage source, edit [start.sh](/Users/kulkarni/Library/CloudStorage/OneDrive-UniversityofCambridge/ChatBot%20Project/Projects/HF/Chatbot_main/start.sh):
+
+- To use your own Hugging Face dataset repo, change `DATASET_REPO_URL` and provide an `HF_TOKEN` secret that can access that repo.
+- To use a different storage bootstrapping approach, replace the clone/sync logic in [start.sh](/Users/kulkarni/Library/CloudStorage/OneDrive-UniversityofCambridge/ChatBot%20Project/Projects/HF/Chatbot_main/start.sh) and ensure `/app/storage` is created with the expected folder layout before the backend starts.
 
 #### Installation instructions
 
