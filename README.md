@@ -12,12 +12,17 @@ license: cc-by-nc-nd-4.0
 
 # Materials AI Chatbot & Phase Diagram Generator
 
-An AI-powered materials science assistant that provides:
+An AI-powered materials science assistant that integrates retrieval-augmented PDF question answering with data-driven phase diagram generation. The system combines semantic search, large language models, and structured materials datasets to enable natural language interaction with scientific literature and materials data.
 
-- PDF-based semantic question answering with retrieval-augmented generation
-- Phase diagram generation from structured materials datasets
-- A FastAPI backend and Panel frontend
-- Support for either Hugging Face models or Ollama models
+### Key Features
+- PDF-based semantic search and question answering using RAG  
+- Embedding-driven retrieval with FAISS and sentence-transformers  
+- Flexible LLM support (Hugging Face or Ollama, local or hosted)  
+- Phase diagram generation from structured materials datasets  
+- Curie / Néel temperature extraction workflows  
+- Interactive visualisation using hvPlot and HoloViews  
+- Modular FastAPI backend with a Panel-based frontend
+
 
 ## Architecture
 
@@ -29,26 +34,15 @@ Several code paths depend on specific subdirectories under `STORAGE_DIR`. The ch
 
 At the moment, the default workflow assumes that `STORAGE_DIR` comes from a Hugging Face dataset repository. Both `backend.sh` for source mode and `start.sh` for Docker/HF Spaces build a Git remote URL using `HF_TOKEN`, then clone that dataset repo into `STORAGE_DIR` if it is missing or empty. They also periodically sync selected generated folders back to the same remote. That behavior can be changed if you want to use your own local storage directory, a different dataset repo, or a different synchronization strategy; the mode-specific sections below explain what to change depending on how you run the app.
 
-## Features
-
-### PDF chatbot
-
-- PDF ingestion
-- sentence-transformer embeddings
-- FAISS vector similarity search
-- LLM answer generation with either Hugging Face or Ollama
-
-### Phase diagram generator
-
-- Curie / Neel temperature extraction workflows
-- interactive visualisation with hvPlot and HoloViews
-- script-based and LLM-assisted generation paths
 
 ## 3 Modes of Operation
+
+Below are three modes of running the application, supporting both offline and online deployments with different model backends.
 
 - [1. [Offline] From source - using either Ollama or HF Transformers](#1-offline-from-source---using-either-ollama-or-hf-transformers)
 - [2. [Offline] With Docker - using either Ollama or HF Transformers](#2-offline-with-docker---using-either-ollama-or-hf-transformers)
 - [3. [Online] HF Spaces with Docker - using only the HF Transformers](#3-online-hf-spaces-with-docker---using-only-the-hf-transformers)
+
 
 ### 1. [Offline] From source - using either Ollama or HF Transformers
 
