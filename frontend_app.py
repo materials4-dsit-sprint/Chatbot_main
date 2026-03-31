@@ -402,9 +402,9 @@ log_toggle = pn.widgets.Select(
 
 # Discrete sliders for K (number of rows) and request timeout (seconds)
 k_slider = pn.widgets.DiscreteSlider(
-    name="K (rows)",
+    name="K (no. of chunks)",
     options=[1, 2, 4, 8, 10, 20, 30, 40, 50, 60, 70, 80],
-    value=30,
+    value=8,
     width=260
 )
 
