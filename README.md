@@ -385,6 +385,8 @@ Container endpoints:
 - This repository pushed to the Space
 - Access to the required Hugging Face credentials
 - No Ollama setup is needed for this mode
+- For smaller Hugging Face models such as Qwen 1.5B or 3B, use at least a `T4 Small` Space
+- For larger Hugging Face models such as DeepSeek 7B or 8B, use at least `T4 Medium` or an `L4` GPU Space
 
 #### Environment variables
 
