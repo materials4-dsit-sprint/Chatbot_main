@@ -32,7 +32,7 @@ The backend is defined primarily in `server.py` and is responsible for startup-t
 
 Several code paths depend on specific subdirectories under `STORAGE_DIR`. The chatbot expects PDF files under `pdfs/`, PDF FAISS indexes under `pdf_vectorstores/`, materials CSV data under `materials/`, CSV vector stores under `csv_vectorstores/`, and chat logs under `logs/`. Other features also read or write `materials_nollm_log/`, `materials_outputs/`, `logos/`, and `hf_cache/`. In practice, `STORAGE_DIR` is the persistent working area for the whole application: it holds user-ingested documents, derived retrieval indexes, phase-diagram inputs, generated outputs, and runtime caches.
 
-At the moment, the default workflow assumes that `STORAGE_DIR` comes from a Hugging Face dataset repository. Both `backend.sh` for source mode and `start.sh` for Docker/HF Spaces build a Git remote URL using `HF_TOKEN`, then clone that dataset repo into `STORAGE_DIR` if it is missing or empty. They also periodically sync selected generated folders back to the same remote. That behavior can be changed if you want to use your own local storage directory, a different dataset repo, or a different synchronization strategy; the mode-specific sections below explain what to change depending on how you run the app.
+At the moment, the default workflow assumes that `STORAGE_DIR` comes from a Hugging Face dataset repository. Both `backend.sh` for source mode and `start.sh` for Docker/HF Spaces expect `DATASET_REPO` to be set externally as a Hugging Face dataset slug such as `your-org/your-dataset`. They then build the authenticated Git remote URL using `HF_TOKEN`, clone that dataset repo into `STORAGE_DIR` if it is missing or empty, and periodically sync selected generated folders back to the same remote. That behavior can be changed if you want to use your own local storage directory, a different dataset repo, or a different synchronization strategy; the mode-specific sections below explain what to change depending on how you run the app.
 
 
 ## 3 Modes of Operation
@@ -52,7 +52,7 @@ Below are three modes of running the application, supporting both offline and on
 - Conda installed
 - Python 3.11 available for a Conda environment of your choice, for example `my-env`
 - `git` and `git-lfs` installed
-- Access to the Hugging Face dataset repo used for storage sync
+- Access to a Hugging Face dataset repo that will be used for storage sync
 - Internet access on first run for dependency, model, and dataset downloads
 - If using Ollama: Ollama installed on the host and the selected local model already pulled
 
@@ -64,9 +64,10 @@ ollama pull deepseek-r1:1.5b
 
 #### Environment variables
 
-Keep these secrets private and never commit them:
+Keep tokens private and never commit them. `DATASET_REPO` is not secret, but it should still be set explicitly in your runtime environment:
 
-- `HF_TOKEN`: Hugging Face token used by `backend.sh` to clone the dataset-backed storage repository into `./storage` and to sync generated outputs back to that repo
+- `DATASET_REPO`: Hugging Face dataset repo slug used for storage sync, for example `your-org/your-dataset`
+- `HF_TOKEN`: Hugging Face token used by `backend.sh` to clone the dataset-backed storage repository into `./storage` and to sync generated outputs back to that repo. This token must have read/write access to `DATASET_REPO`.
 - `HUGGINGFACE_HUB_TOKEN`: Hugging Face Hub token used when the app needs authenticated access to Hugging Face model artifacts
 
 Set the runtime variables before starting the app:
@@ -88,12 +89,15 @@ export STORAGE_DIR="./storage"
 
 `backend.sh` clones the dataset repo into `./storage` if it is not already present, then keeps syncing generated outputs back to that repo periodically.
 
+To use the default Hugging Face-backed storage flow, create or choose a dataset repo on Hugging Face first, note its slug, and then export it through `DATASET_REPO`. For example, if your dataset URL is `https://huggingface.co/datasets/acme/materials-storage`, set `DATASET_REPO="acme/materials-storage"`.
+
 #### Example setup
 
 Hugging Face Transformers:
 
 ```bash
 export HF_TOKEN="your_hf_dataset_token"
+export DATASET_REPO="your-org/your-dataset"
 export HUGGINGFACE_HUB_TOKEN="your_hf_model_token"
 export API_KEY="your_secure_api_key"
 export WHICH_PIPELINE="hf"
@@ -105,6 +109,7 @@ Ollama:
 
 ```bash
 export HF_TOKEN="your_hf_dataset_token"
+export DATASET_REPO="your-org/your-dataset"
 export HUGGINGFACE_HUB_TOKEN="your_hf_model_token"
 export API_KEY="your_secure_api_key"
 export WHICH_PIPELINE="ollama"
@@ -115,10 +120,11 @@ export STORAGE_DIR="./storage"
 
 #### About `STORAGE_DIR`
 
-In the current setup, `STORAGE_DIR` is not just an empty local folder. `backend.sh` treats it as a clone target for the Hugging Face dataset repo configured in:
+In the current setup, `STORAGE_DIR` is not just an empty local folder. `backend.sh` treats it as a clone target for the Hugging Face dataset repo identified by `DATASET_REPO` and authenticated with `HF_TOKEN`:
 
 ```bash
-DATASET_REPO_URL="https://hf:${HF_TOKEN}@huggingface.co/datasets/DSIT-TESTS/materials_dataset"
+export DATASET_REPO="your-org/your-dataset"
+export HF_TOKEN="your_hf_dataset_token"
 ```
 
 The storage directory should contain, or eventually be able to contain, at least these folders:
@@ -133,11 +139,23 @@ The storage directory should contain, or eventually be able to contain, at least
 - `logos/`
 - `hf_cache/`
 
-If you want to keep using the current Hugging Face dataset repo, you need a valid `HF_TOKEN` that has access to that dataset.
+If you want to keep using the Hugging Face-backed storage workflow, you need:
+
+- a dataset repo created on Hugging Face
+- `DATASET_REPO` set to that repo slug, for example `your-org/your-dataset`
+- a valid `HF_TOKEN` with access to that dataset repo
+
+The dataset should contain, or be ready to receive, the storage folders listed above. A practical first-time setup is:
+
+```bash
+export DATASET_REPO="your-org/your-dataset"
+export HF_TOKEN="your_hf_dataset_token"
+export STORAGE_DIR="./storage"
+```
 
 If you want to use your own `STORAGE_DIR`, there are two common options:
 
-- Keep the current clone-and-sync workflow, but change `DATASET_REPO_URL` in [backend.sh](/Users/kulkarni/Library/CloudStorage/OneDrive-UniversityofCambridge/ChatBot%20Project/Projects/HF/Chatbot_main/backend.sh) to point to your own Hugging Face dataset repo. In that case, `HF_TOKEN` must have access to your repo.
+- Keep the current clone-and-sync workflow, but set `DATASET_REPO` to your own Hugging Face dataset repo slug before running [backend.sh](/Users/kulkarni/Library/CloudStorage/OneDrive-UniversityofCambridge/ChatBot%20Project/Projects/HF/Chatbot_main/backend.sh). In that case, `HF_TOKEN` must have access to that repo.
 - Stop cloning from Hugging Face and use a purely local folder. In that case, remove or replace the clone/pull/push logic in [backend.sh](/Users/kulkarni/Library/CloudStorage/OneDrive-UniversityofCambridge/ChatBot%20Project/Projects/HF/Chatbot_main/backend.sh), create/populate `STORAGE_DIR` yourself, and keep the expected folder structure above.
 
 #### Installation instructions
@@ -190,7 +208,8 @@ This starts the Panel UI on [http://127.0.0.1:5006](http://127.0.0.1:5006).
 
 - Choose any Conda environment name you prefer, but make sure the activation lines in `backend.sh` and `frontend.sh` match that name before running the scripts
 - The frontend and backend must use the same `API_KEY`
-- `HF_TOKEN` is used for dataset clone and periodic sync
+- `DATASET_REPO` must be set before starting `backend.sh`
+- `HF_TOKEN` is used for dataset clone and periodic sync, and must have access to `DATASET_REPO`
 - `HUGGINGFACE_HUB_TOKEN` is needed for authenticated Hugging Face model access
 - If `WHICH_PIPELINE=ollama`, the Ollama server must already be reachable at `OLLAMA_BASE_URL`
 - On first run, model downloads and vector-store preparation may take time
@@ -205,9 +224,10 @@ This starts the Panel UI on [http://127.0.0.1:5006](http://127.0.0.1:5006).
 
 #### Environment variables
 
-Keep these secrets private and never bake them into the image:
+Keep tokens private and never bake them into the image. `DATASET_REPO` is not secret, but it should still be passed explicitly at runtime:
 
-- `HF_TOKEN`: Hugging Face token passed into the container so `start.sh` can clone the dataset-backed storage repository into `/app/storage` and sync generated outputs back to it
+- `DATASET_REPO`: Hugging Face dataset repo slug used for storage sync, for example `your-org/your-dataset`
+- `HF_TOKEN`: Hugging Face token passed into the container so `start.sh` can clone the dataset-backed storage repository into `/app/storage` and sync generated outputs back to it. This token must have read/write access to `DATASET_REPO`.
 - `HUGGINGFACE_HUB_TOKEN`: Hugging Face Hub token used inside the container for authenticated access to Hugging Face model artifacts
 
 Set the runtime variables for the container:
@@ -229,12 +249,15 @@ export STORAGE_DIR="/app/storage"
 
 Inside the container, `start.sh` uses `/app/storage`. If that directory is empty, it clones the dataset repo there and then syncs generated outputs periodically.
 
+To use this flow, create or choose a dataset repo on Hugging Face, then set `DATASET_REPO` to the repo slug, not the full URL. For example, if the dataset page is `https://huggingface.co/datasets/acme/materials-storage`, set `DATASET_REPO="acme/materials-storage"`.
+
 #### Example setup
 
 Hugging Face Transformers:
 
 ```bash
 export HF_TOKEN="your_hf_dataset_token"
+export DATASET_REPO="your-org/your-dataset"
 export HUGGINGFACE_HUB_TOKEN="your_hf_model_token"
 export API_KEY="your_secure_api_key"
 export WHICH_PIPELINE="hf"
@@ -246,6 +269,7 @@ Ollama:
 
 ```bash
 export HF_TOKEN="your_hf_dataset_token"
+export DATASET_REPO="your-org/your-dataset"
 export HUGGINGFACE_HUB_TOKEN="your_hf_model_token"
 export API_KEY="your_secure_api_key"
 export WHICH_PIPELINE="ollama"
@@ -256,10 +280,11 @@ export STORAGE_DIR="/app/storage"
 
 #### About `STORAGE_DIR`
 
-In Docker mode, `start.sh` currently assumes that `/app/storage` is backed by the Hugging Face dataset repo configured in:
+In Docker mode, `start.sh` currently assumes that `/app/storage` is backed by the Hugging Face dataset repo identified by `DATASET_REPO` and authenticated with `HF_TOKEN`:
 
 ```bash
-DATASET_REPO_URL="https://hf:$HF_TOKEN@huggingface.co/datasets/DSIT-TESTS/materials_dataset"
+export DATASET_REPO="your-org/your-dataset"
+export HF_TOKEN="your_hf_dataset_token"
 ```
 
 If `/app/storage` is empty, `start.sh` clones that repo there automatically and then syncs selected generated outputs back to it.
@@ -276,11 +301,11 @@ The storage directory should contain, or be able to contain, these folders:
 - `logos/`
 - `hf_cache/`
 
-If you want to keep the current Hugging Face-backed storage behavior, `HF_TOKEN` must be able to access that dataset repo.
+If you want to keep the current Hugging Face-backed storage behavior, set `DATASET_REPO` to your dataset slug and use an `HF_TOKEN` that can access that dataset repo.
 
 If you want to use your own `STORAGE_DIR` in Docker, update the storage logic in [start.sh](/Users/kulkarni/Library/CloudStorage/OneDrive-UniversityofCambridge/ChatBot%20Project/Projects/HF/Chatbot_main/start.sh):
 
-- To use your own Hugging Face dataset repo, change `DATASET_REPO_URL` to your repo and pass an `HF_TOKEN` that can access it.
+- To use your own Hugging Face dataset repo, pass `DATASET_REPO="your-org/your-dataset"` into the container and provide an `HF_TOKEN` that can access it.
 - To use a purely local or mounted storage volume, remove or replace the clone/push logic in [start.sh](/Users/kulkarni/Library/CloudStorage/OneDrive-UniversityofCambridge/ChatBot%20Project/Projects/HF/Chatbot_main/start.sh), mount or create `/app/storage` yourself, and make sure it has the expected folder structure above.
 
 #### Installation instructions
@@ -306,6 +331,7 @@ Run the container:
 docker run --rm -it \
   -p 7860:7860 \
   -p 9000:9000 \
+  -e DATASET_REPO="$DATASET_REPO" \
   -e HF_TOKEN="$HF_TOKEN" \
   -e HUGGINGFACE_HUB_TOKEN="$HUGGINGFACE_HUB_TOKEN" \
   -e API_KEY="$API_KEY" \
@@ -324,6 +350,7 @@ docker run --rm -it \
   -p 7860:7860 \
   -p 9000:9000 \
   -v "$(pwd)/storage:/app/storage" \
+  -e DATASET_REPO="$DATASET_REPO" \
   -e HF_TOKEN="$HF_TOKEN" \
   -e HUGGINGFACE_HUB_TOKEN="$HUGGINGFACE_HUB_TOKEN" \
   -e API_KEY="$API_KEY" \
@@ -344,6 +371,7 @@ Container endpoints:
 
 - `start.sh` starts both FastAPI and Panel inside the container
 - `STORAGE_DIR` should stay `/app/storage` in Docker
+- `DATASET_REPO` must be passed into the container when using Hugging Face-backed storage
 - If using Ollama on macOS or Windows, `host.docker.internal` should resolve automatically
 - If using Ollama on Linux, add `--add-host=host.docker.internal:host-gateway` to `docker run`
 - The same `API_KEY` is used internally by the frontend and backend
@@ -362,7 +390,8 @@ Container endpoints:
 
 In the Space settings, configure these secrets and variables:
 
-- `HF_TOKEN` as a secret: required so the container running in the Space can clone the dataset-backed storage repository and sync generated outputs
+- `DATASET_REPO`: required variable containing the Hugging Face dataset repo slug used for storage sync, for example `your-org/your-dataset`
+- `HF_TOKEN` as a secret: required so the container running in the Space can clone the dataset-backed storage repository and sync generated outputs. This token must have read/write access to `DATASET_REPO`.
 - `HUGGINGFACE_HUB_TOKEN` as a secret: required for authenticated access to Hugging Face model artifacts when the selected model needs it
 - `API_KEY`: shared secret used by the Panel frontend in the Space to authenticate requests to the FastAPI backend in the same container
 - `WHICH_PIPELINE=hf`: required to force the app onto the Hugging Face Transformers path, since Ollama is not used in this deployment mode
@@ -387,6 +416,7 @@ Configure the following in the Hugging Face Space secrets and variables UI:
 
 ```bash
 HF_TOKEN=your_hf_dataset_token
+DATASET_REPO=your-org/your-dataset
 HUGGINGFACE_HUB_TOKEN=your_hf_model_token
 API_KEY=your_secure_api_key
 WHICH_PIPELINE=hf
@@ -410,11 +440,11 @@ The storage directory should contain, or be able to contain, these folders:
 - `logos/`
 - `hf_cache/`
 
-If you keep the current behavior, the `HF_TOKEN` secret in the Space must have permission to access the configured dataset repo.
+If you keep the current behavior, set `DATASET_REPO` to your dataset slug in the Space settings and make sure the `HF_TOKEN` secret has permission to access that dataset repo.
 
 If you want to point the Space at your own storage source, edit [start.sh](/Users/kulkarni/Library/CloudStorage/OneDrive-UniversityofCambridge/ChatBot%20Project/Projects/HF/Chatbot_main/start.sh):
 
-- To use your own Hugging Face dataset repo, change `DATASET_REPO_URL` and provide an `HF_TOKEN` secret that can access that repo.
+- To use your own Hugging Face dataset repo, set `DATASET_REPO` in the Space settings to your repo slug and provide an `HF_TOKEN` secret that can access that repo.
 - To use a different storage bootstrapping approach, replace the clone/sync logic in [start.sh](/Users/kulkarni/Library/CloudStorage/OneDrive-UniversityofCambridge/ChatBot%20Project/Projects/HF/Chatbot_main/start.sh) and ensure `/app/storage` is created with the expected folder layout before the backend starts.
 
 #### Installation instructions
@@ -432,7 +462,7 @@ The frontend is served by Panel on the public Space URL, and the backend runs al
 - This mode is intended for Hugging Face Transformers only, so keep `WHICH_PIPELINE=hf`
 - `start.sh` serves Panel on port `7860`, which matches the Space configuration
 - The current startup script allows websocket origin `dsit-tests-chatbot-main.hf.space` and `localhost:7860`
-- `HF_TOKEN` is still required because the app clones and syncs the dataset-backed storage repo
+- `DATASET_REPO` and `HF_TOKEN` are both required when the app clones and syncs the dataset-backed storage repo
 - `HUGGINGFACE_HUB_TOKEN` is required for authenticated model access when needed
 - Build and startup times may be longer on first deployment because the Space needs to install dependencies and download model assets
 

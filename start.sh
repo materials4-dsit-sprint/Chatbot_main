@@ -4,7 +4,9 @@ set -e
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export OMP_NUM_THREADS=1
 
-DATASET_REPO_URL="https://hf:$HF_TOKEN@huggingface.co/datasets/DSIT-TESTS/materials_dataset"
+: "${DATASET_REPO:?DATASET_REPO must be set, for example 'owner/dataset_name'}"
+DATASET_REPO_URL="https://hf:${HF_TOKEN}@huggingface.co/datasets/${DATASET_REPO}"
+echo "Using dataset repo: ${DATASET_REPO}"
 
 sync_storage_updates() {
     local sync_paths=()
