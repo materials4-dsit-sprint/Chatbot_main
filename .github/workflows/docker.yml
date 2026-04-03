@@ -28,5 +28,5 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/Materials_4_chatbot:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/Materials_4_chatbot:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/materials_chatbot:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/materials_chatbot:${{ github.sha }}
